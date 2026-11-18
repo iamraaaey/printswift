@@ -2,52 +2,61 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PrintSwift | Peer-to-Peer Student Printing Prototype</title>
-    
-    <!-- Meta tags for PWA / Mobile -->
-    <meta name="description" content="PrintSwift - 24/7 Peer-to-Peer Campus Printing with Escrow Protection & Auto-Delete Privacy for UNIMAS students.">
-    <meta name="theme-color" content="#1d4ed8">
-    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Google Fonts: Plus Jakarta Sans -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- QRCode.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-    <!-- Canvas Confetti -->
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-
-    <!-- Custom App Styles -->
-    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at top, #e2e8f0 0%, #cbd5e1 100%);
+        }
+        /* Custom scrollbar for mobile frame */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        @keyframes scanline {
+            0% { top: 8%; }
+            50% { top: 88%; }
+            100% { top: 8%; }
+        }
+        .animate-scanline {
+            animation: scanline 2.2s ease-in-out infinite;
+        }
+    </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-2 sm:p-4 text-slate-800 antialiased selection:bg-pink-500 selection:text-white">
+<body class="min-h-screen flex items-center justify-center p-2 sm:p-4 text-slate-800">
 
     <!-- Full-Focus Mobile App Device Frame -->
     <div class="w-full max-w-[430px] h-[92vh] max-h-[850px] min-h-[660px] bg-white rounded-[44px] shadow-2xl border-[8px] border-slate-900 overflow-hidden flex flex-col relative">
         
-        <!-- Top Status Bar + Quick In-App Role Switcher -->
-        <div class="bg-blue-700 text-white px-5 pt-2.5 pb-1.5 flex justify-between items-center text-[11px] font-semibold select-none shrink-0 z-20">
+        <!-- Top Status Bar + Database Sync Indicator & Role Badge -->
+        <div class="bg-blue-700 text-white px-5 pt-2.5 pb-1.5 flex justify-between items-center text-[11px] font-semibold select-none shrink-0">
             <span class="flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-lime-300 animate-pulse"></span>
                 <span>23:42 • Late Night</span>
             </span>
-            <div class="flex items-center gap-1 bg-blue-900/70 p-0.5 rounded-full border border-blue-500/40">
-                <button id="pill-student" onclick="switchRole('student')" class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-lime-300 text-slate-900 transition">Student</button>
-                <button id="pill-vendor" onclick="switchRole('vendor')" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold text-blue-100 hover:text-white transition">Vendor</button>
+            <div class="flex items-center gap-1.5">
+                <span id="db-sync-badge" class="px-2 py-0.5 rounded-full bg-blue-900/70 text-[9px] font-bold text-lime-300 border border-blue-500/40 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-lime-300"></span> DB Ready
+                </span>
+                <div id="role-pill-container" class="hidden flex items-center gap-1 bg-blue-900/70 p-0.5 rounded-full border border-blue-500/40">
+                    <button id="pill-student" onclick="switchRole('student')" class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-lime-300 text-slate-900 transition">Student</button>
+                    <button id="pill-vendor" onclick="switchRole('vendor')" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold text-blue-100 hover:text-white transition">Vendor</button>
+                </div>
             </div>
         </div>
 
-        <!-- App Header -->
-        <header class="bg-blue-600 text-white px-5 pb-4 pt-2 rounded-b-3xl shadow-md shrink-0 z-10">
+        <!-- App Header (Shown when authenticated) -->
+        <header id="app-header" class="hidden bg-blue-600 text-white px-5 pb-4 pt-2 rounded-b-3xl shadow-md shrink-0">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-2xl bg-lime-300 text-slate-900 flex items-center justify-center font-black text-lg shadow-sm">
@@ -62,18 +71,21 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-1.5">
-                    <button onclick="openWalletModal()" class="px-2.5 py-1.5 rounded-xl bg-blue-500/70 hover:bg-blue-500 text-[11px] font-bold flex items-center gap-1 transition" title="Campus Wallet">
+                    <button onclick="openTutorialOverlay()" class="w-8 h-8 rounded-full bg-blue-500/70 hover:bg-blue-500 flex items-center justify-center transition" title="App Tutorial">
+                        <i data-lucide="help-circle" class="w-4 h-4 text-white"></i>
+                    </button>
+                    <button onclick="openWalletModal()" class="px-2.5 py-1.5 rounded-xl bg-blue-500/70 hover:bg-blue-500 text-[11px] font-bold flex items-center gap-1 transition">
                         <i data-lucide="wallet" class="w-3.5 h-3.5 text-lime-300"></i>
                         <span id="wallet-balance-header">RM25.00</span>
                     </button>
-                    <button onclick="openProfileModal()" class="w-8 h-8 rounded-full bg-blue-500/70 hover:bg-blue-500 flex items-center justify-center transition" title="Account & Verification">
+                    <button onclick="openProfileModal()" class="w-8 h-8 rounded-full bg-blue-500/70 hover:bg-blue-500 flex items-center justify-center transition" title="Account & Sign Out">
                         <i data-lucide="user-check" class="w-4 h-4 text-lime-300"></i>
                     </button>
                 </div>
             </div>
         </header>
 
-        <!-- Toast / Message Box -->
+        <!-- Toast / Message Box (Replaces alert()) -->
         <div id="toast-box" class="hidden absolute top-24 left-4 right-4 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700 text-xs flex items-center justify-between gap-2 transition-all">
             <div class="flex items-center gap-2">
                 <i data-lucide="sparkles" class="w-4 h-4 text-lime-300 shrink-0"></i>
@@ -82,23 +94,30 @@
             <button onclick="hideNotification()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
         </div>
 
-        <!-- Dynamic Modal Overlay -->
+        <!-- Dynamic Modal Overlay (Vendor Details, QR Pickup Scan, Reprint Claim, Wallet, Rating, Prompt) -->
         <div id="app-modal" class="hidden absolute inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
             <div id="app-modal-body" class="bg-white w-full rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[84%] overflow-y-auto no-scrollbar space-y-4">
                 <!-- Modal content injected dynamically -->
             </div>
         </div>
 
+        <!-- Tutorial Walkthrough Overlay (Shown after login/signup before starting) -->
+        <div id="tutorial-overlay" class="hidden absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <div id="tutorial-card" class="bg-white w-full rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-4">
+                <!-- Tutorial step injected dynamically -->
+            </div>
+        </div>
+
         <!-- Hidden Native File Input for Real File Selection -->
         <input type="file" id="real-file-input" accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.png" class="hidden" onchange="handleRealFileSelect(event)">
 
-        <!-- MAIN CONTENT AREA (Scrollable) -->
+        <!-- MAIN CONTENT AREA (Scrollable: Auth Screens OR App Views) -->
         <main id="app-content" class="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4 bg-slate-50/80">
             <!-- Dynamic Views Injected Here -->
         </main>
 
-        <!-- Bottom Navigation Bar -->
-        <nav id="bottom-nav" class="bg-white border-t border-slate-200 px-3 py-2 flex justify-around items-center shrink-0 z-10">
+        <!-- Bottom Navigation Bar (Shown when authenticated) -->
+        <nav id="bottom-nav" class="hidden bg-white border-t border-slate-200 px-3 py-2 flex justify-around items-center shrink-0">
             <!-- Dynamic Nav Injected Here -->
         </nav>
 
@@ -108,7 +127,1954 @@
         </div>
     </div>
 
-    <!-- App Engine Script -->
-    <script src="js/app.js"></script>
+    <!-- Firebase SDKs & Database Integration -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Initialize Firebase if environment variables exist
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'printswift-unimas-pilot';
+        let db = null;
+        let auth = null;
+        let firebaseUser = null;
+
+        async function initDatabase() {
+            try {
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            firebaseUser = user;
+                            document.getElementById('db-sync-badge').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-lime-300"></span> Cloud DB Live`;
+                            attachFirestoreListeners();
+                        }
+                    });
+                } else {
+                    document.getElementById('db-sync-badge').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-300"></span> Demo DB`;
+                }
+            } catch (err) {
+                console.error("Database init fallback:", err);
+                document.getElementById('db-sync-badge').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-300"></span> Local Mode`;
+            }
+        }
+
+        function attachFirestoreListeners() {
+            if (!db || !firebaseUser) return;
+
+            // Listen to public orders collection (Rule 1 & Rule 2 compliant)
+            const ordersCol = collection(db, 'artifacts', appId, 'public', 'data', 'print_orders');
+            onSnapshot(ordersCol, (snapshot) => {
+                const dbOrders = [];
+                snapshot.forEach((docSnap) => {
+                    dbOrders.push({ firestoreId: docSnap.id, ...docSnap.data() });
+                });
+                if (dbOrders.length > 0) {
+                    dbOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    window.state.orders = dbOrders;
+                    if (window.state.isAuthenticated) window.render();
+                }
+            }, (error) => {
+                console.error("Orders snapshot error:", error);
+            });
+
+            // Listen to registered users directory
+            const usersCol = collection(db, 'artifacts', appId, 'public', 'data', 'registered_users');
+            onSnapshot(usersCol, (snapshot) => {
+                const usersList = [];
+                snapshot.forEach((docSnap) => {
+                    usersList.push(docSnap.data());
+                });
+                if (usersList.length > 0) {
+                    window.state.registeredAccounts = usersList;
+                }
+            }, (error) => {
+                console.error("Users snapshot error:", error);
+            });
+        }
+
+        // Expose DB helpers to global window for UI actions
+        window.dbService = {
+            async saveUserAccount(accountObj) {
+                if (!db || !firebaseUser) return;
+                try {
+                    const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'registered_users', accountObj.email.replace(/[^a-zA-Z0-9]/g, '_'));
+                    await setDoc(userDocRef, { ...accountObj, uid: firebaseUser.uid, updatedAt: Date.now() }, { merge: true });
+                } catch (e) {
+                    console.error("Error saving user:", e);
+                }
+            },
+            async saveOrder(orderObj) {
+                if (!db || !firebaseUser) return;
+                try {
+                    const orderDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'print_orders', orderObj.id);
+                    await setDoc(orderDocRef, { ...orderObj, createdAt: orderObj.createdAt || Date.now() }, { merge: true });
+                } catch (e) {
+                    console.error("Error saving order:", e);
+                }
+            }
+        };
+
+        initDatabase();
+    </script>
+
+    <script>
+        // --- EXPANDED APPLICATION STATE WITH AUTH, TUTORIAL & DATABASE ---
+        window.state = {
+            isAuthenticated: false,
+            authMode: 'login', // 'login' | 'signup'
+            authStep: 1, // Sign-up: 1 (Role & UNIMAS Email), 2 (OTP & College), 3 (Printer Specs if Vendor / Wallet PIN if Student)
+            loginStep: 1, // Login: 1 (Role & Email), 2 (Password / OTP Verify)
+            showTutorial: false,
+            tutorialStep: 0,
+            currentUser: null,
+            registeredAccounts: [
+                {
+                    name: 'Calvin Joseph Param',
+                    email: '98387@siswa.unimas.my',
+                    matric: '98387',
+                    role: 'student',
+                    college: 'Kolej Bunga Raya',
+                    block: 'Block B',
+                    walletBalance: 25.00
+                },
+                {
+                    name: 'Amirul Anas bin Yusmin',
+                    email: '98124@siswa.unimas.my',
+                    matric: '98124',
+                    role: 'vendor',
+                    college: 'Kolej Bunga Raya',
+                    block: 'Block B',
+                    printerModel: 'Canon PIXMA G3020 (80gsm A4)',
+                    bwRate: 0.15,
+                    colorRate: 0.50,
+                    walletBalance: 42.80
+                }
+            ],
+            authForm: {
+                role: 'student', // 'student' | 'vendor'
+                name: '',
+                email: '',
+                matric: '',
+                password: '',
+                otp: '4829',
+                college: 'Kolej Bunga Raya',
+                block: 'Block B',
+                printerModel: 'Canon PIXMA G3020 (80gsm A4)',
+                bwRate: 0.15,
+                colorRate: 0.50
+            },
+            role: 'student', // 'student' | 'vendor'
+            studentTab: 'home', // 'home' | 'upload' | 'orders' | 'chat'
+            vendorTab: 'dashboard', // 'dashboard' | 'slots'
+            vendorOnline: true,
+            walletBalance: 25.00,
+            vendorEarnings: 24.60,
+            searchQuery: '',
+            collegeFilter: 'All',
+            selectedVendorId: 1,
+            activeChatVendorId: 1,
+            uploadStep: 1,
+            orderForm: {
+                fileName: 'TMC2013_Group18_FinalReport.pdf',
+                fileSize: '1.4 MB',
+                pages: 14,
+                colorMode: 'bw',
+                copies: 1,
+                doubleSided: true,
+                stapleBind: false,
+                autoDelete: true,
+                slot: 'Tonight, 11:45 PM - 12:00 AM',
+                pickupPoint: 'Kolej Bunga Raya • Block B Lobby',
+                paymentMethod: 'DuitNow QR',
+                notes: ''
+            },
+            vendors: [
+                {
+                    id: 1,
+                    name: 'Amirul Anas',
+                    code: 'KBR',
+                    matric: '98124',
+                    college: 'Kolej Bunga Raya • Block B',
+                    distance: '2 mins walk',
+                    printer: 'Canon PIXMA G3020 (80gsm A4)',
+                    bwPrice: 0.15,
+                    colorPrice: 0.50,
+                    rating: 4.9,
+                    reviewsCount: 42,
+                    topVendor: true,
+                    holidayAvailable: true,
+                    slots: ['Tonight, 11:45 PM - 12:00 AM', 'Tonight, 12:15 AM - 12:30 AM', 'Tomorrow, 7:30 AM - 8:00 AM'],
+                    status: 'Open Late Night',
+                    recentReviews: [
+                        { user: 'Raynold K.', text: 'Printed my 20-page lab report at 11:50 PM. Super crisp!', stars: 5 },
+                        { user: 'Siti A.', text: 'Fast reply and file auto-deleted right after pickup.', stars: 5 }
+                    ]
+                },
+                {
+                    id: 2,
+                    name: 'Calvin Joseph',
+                    code: 'KTR',
+                    matric: '98387',
+                    college: 'Kolej Tun Razak • Neutral Point',
+                    distance: '5 mins walk',
+                    printer: 'HP Smart Tank 580 + Comb Binder',
+                    bwPrice: 0.20,
+                    colorPrice: 0.60,
+                    rating: 4.8,
+                    reviewsCount: 29,
+                    topVendor: true,
+                    holidayAvailable: true,
+                    slots: ['Tonight, 12:00 AM - 12:15 AM', 'Tomorrow, 8:00 AM - 8:30 AM', 'Public Holiday Slot (10:00 AM)'],
+                    status: 'Open Late Night',
+                    recentReviews: [
+                        { user: 'Hafiz M.', text: 'Saved my scholarship form deadline before 8 AM class.', stars: 5 }
+                    ]
+                },
+                {
+                    id: 3,
+                    name: 'Arif Wajdi',
+                    code: 'KSA',
+                    matric: '82651',
+                    college: 'Kolej Sakura • Main Gate',
+                    distance: '7 mins walk',
+                    printer: 'Epson EcoTank L3250',
+                    bwPrice: 0.18,
+                    colorPrice: 0.55,
+                    rating: 4.7,
+                    reviewsCount: 18,
+                    topVendor: false,
+                    holidayAvailable: false,
+                    slots: ['Tomorrow, 7:00 AM - 7:30 AM', 'Tomorrow, 8:15 AM - 8:45 AM'],
+                    status: 'Early Bird Slot',
+                    recentReviews: [
+                        { user: 'Nurul I.', text: 'Clean color charts and easy meetup at Sakura gate.', stars: 5 }
+                    ]
+                },
+                {
+                    id: 4,
+                    name: 'Raynold Kabai',
+                    code: 'KBR',
+                    matric: '100853',
+                    college: 'Kolej Bunga Raya • Block D',
+                    distance: '3 mins walk',
+                    printer: 'Brother DCP-T420W Duplex',
+                    bwPrice: 0.16,
+                    colorPrice: 0.50,
+                    rating: 4.9,
+                    reviewsCount: 35,
+                    topVendor: true,
+                    holidayAvailable: true,
+                    slots: ['Tonight, 12:30 AM - 12:45 AM', 'Public Holiday All-Day Slot'],
+                    status: '24/7 Exam Week',
+                    recentReviews: [
+                        { user: 'Daniel L.', text: 'Best duplex print quality in KBR!', stars: 5 }
+                    ]
+                }
+            ],
+            orders: [
+                {
+                    id: 'PS-2026-884',
+                    pickupCode: '8842',
+                    studentName: 'Luqman Najib (99544)',
+                    vendorId: 1,
+                    vendorName: 'Amirul Anas (KBR)',
+                    fileName: 'Lab_Sheet_Week9.pdf',
+                    pages: 6,
+                    copies: 1,
+                    colorMode: 'bw',
+                    doubleSided: false,
+                    total: 1.10,
+                    slot: 'Tonight, 11:30 PM',
+                    pickup: 'Kolej Bunga Raya • Block B Lobby',
+                    status: 'ready',
+                    autoDelete: true,
+                    fileDeleted: false,
+                    rated: false,
+                    reprintReason: '',
+                    createdAt: Date.now() - 60000
+                }
+            ],
+            chats: {
+                1: [
+                    { sender: 'vendor', text: 'Hi! Got your PDF. Printing on Canon PIXMA now, sharp & clean.', time: '23:36' },
+                    { sender: 'student', text: 'Thanks bro! Saved my deadline. Heading down to Block B lobby in 5 mins.', time: '23:38' },
+                    { sender: 'vendor', text: 'Ready at the lobby table! Show code #8842 or tap Confirm Pick-Up.', time: '23:40' }
+                ],
+                2: [{ sender: 'vendor', text: 'Hey! I have slots open until 1 AM tonight if you need binding too.', time: '22:15' }],
+                3: [{ sender: 'vendor', text: 'Morning slots start at 7:00 AM sharp at Sakura Main Gate!', time: '21:00' }],
+                4: [{ sender: 'vendor', text: 'Available all weekend & public holidays at KBR Block D.', time: '20:40' }]
+            },
+            vendorSlots: [
+                { time: '11:30 PM - 12:00 AM (Late Night)', active: true },
+                { time: '12:00 AM - 12:30 AM (Late Night)', active: true },
+                { time: '07:30 AM - 08:30 AM (Early Morning)', active: true },
+                { time: 'Public Holiday All-Day Pass', active: true }
+            ]
+        };
+
+        const state = window.state;
+
+        // --- TUTORIAL STEPS DATA ---
+        const tutorialContent = {
+            student: [
+                {
+                    icon: 'moon',
+                    badge: 'Step 1 of 4 • 24/7 Access',
+                    title: 'Print Anytime Shops Are Closed',
+                    desc: 'Need urgent assignments printed at 11:45 PM, 7:00 AM, or on public holidays? Browse verified UNIMAS student vendors right inside your residential college.'
+                },
+                {
+                    icon: 'shield-alert',
+                    badge: 'Step 2 of 4 • Document Privacy',
+                    title: 'In-App Vault & Auto-Delete',
+                    desc: 'Your PDFs never leave PrintSwift’s encrypted viewer. Once you pick up your printed pages, the file automatically deletes from the vendor’s device.'
+                },
+                {
+                    icon: 'qr-code',
+                    badge: 'Step 3 of 4 • Escrow Protection',
+                    title: 'Pay Safely via DuitNow QR Escrow',
+                    desc: 'Your payment is held securely in escrow until you inspect your print quality at the hostel lobby or neutral point and verify your 4-digit Pick-Up PIN.'
+                },
+                {
+                    icon: 'award',
+                    badge: 'Step 4 of 4 • Reprint Guarantee',
+                    title: '100% Reprint Guarantee & Ratings',
+                    desc: 'Smudged ink or cut-off pages? Trigger a free Reprint Claim before releasing escrow, and rate Top Vendors to keep campus quality high.'
+                }
+            ],
+            vendor: [
+                {
+                    icon: 'printer',
+                    badge: 'Step 1 of 4 • Monetize Spare Capacity',
+                    title: 'Turn Your Room Printer Into Income',
+                    desc: 'Set your own per-page rates (RM0.15 – RM0.25/pg) and earn extra cash during late-night submission peaks without leaving your residential college.'
+                },
+                {
+                    icon: 'calendar-clock',
+                    badge: 'Step 2 of 4 • Your Schedule, Your Slots',
+                    title: 'Control Your 24/7 Availability',
+                    desc: 'Toggle ONLINE only when you are awake and have paper/ink ready. Booked time slots eliminate chaotic walk-ins.'
+                },
+                {
+                    icon: 'lock',
+                    badge: 'Step 3 of 4 • Zero-Leak Compliance',
+                    title: 'Encrypted Print-Only Viewer',
+                    desc: 'Student documents open in a secure print-only view and auto-delete upon handover—building trust for your Top Vendor badge.'
+                },
+                {
+                    icon: 'wallet',
+                    badge: 'Step 4 of 4 • Instant Escrow Payout',
+                    title: 'Guaranteed Payment on Handover',
+                    desc: 'Every incoming job is already paid into escrow. Once the student verifies their Pick-Up PIN, funds credit straight to your wallet.'
+                }
+            ]
+        };
+
+        // --- NOTIFICATIONS & MODALS ---
+        function showNotification(msg) {
+            const box = document.getElementById('toast-box');
+            document.getElementById('toast-text').textContent = msg;
+            box.classList.remove('hidden');
+            clearTimeout(window.toastTimer);
+            window.toastTimer = setTimeout(hideNotification, 3800);
+        }
+
+        function hideNotification() {
+            document.getElementById('toast-box').classList.add('hidden');
+        }
+
+        function openModal(htmlContent) {
+            const modal = document.getElementById('app-modal');
+            document.getElementById('app-modal-body').innerHTML = htmlContent;
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeModal() {
+            document.getElementById('app-modal').classList.add('hidden');
+        }
+
+        // --- STEP-BY-STEP AUTHENTICATION (LOGIN & SIGN UP) ---
+        function setAuthMode(mode) {
+            state.authMode = mode;
+            state.authStep = 1;
+            state.loginStep = 1;
+            render();
+        }
+
+        function selectAuthRole(role) {
+            state.authForm.role = role;
+            render();
+        }
+
+        function advanceLoginStep() {
+            if (state.loginStep === 1) {
+                const emailInput = document.getElementById('login-email');
+                const email = emailInput ? emailInput.value.trim() : state.authForm.email;
+                if (!email) {
+                    showNotification('Please enter your @siswa.unimas.my email.');
+                    return;
+                }
+                state.authForm.email = email;
+                state.loginStep = 2;
+                showNotification('UNIMAS ID verified! Enter password or OTP.');
+                render();
+            } else {
+                const existing = state.registeredAccounts.find(
+                    a => a.email.toLowerCase() === state.authForm.email.toLowerCase()
+                );
+                const matricMatch = state.authForm.email.match(/^(\d+)/);
+                const derivedMatric = existing ? existing.matric : (matricMatch ? matricMatch[1] : '98387');
+                const derivedName = existing ? existing.name : state.authForm.email.split('@')[0].replace(/[._]/g, ' ').toUpperCase();
+
+                completeAuthentication({
+                    name: derivedName,
+                    email: state.authForm.email,
+                    matric: derivedMatric,
+                    role: state.authForm.role,
+                    college: existing ? existing.college : 'Kolej Bunga Raya',
+                    block: existing ? existing.block : 'Block B',
+                    printerModel: existing?.printerModel || 'Canon PIXMA G3020',
+                    walletBalance: existing?.walletBalance || 25.00
+                }, true);
+            }
+        }
+
+        function quickDemoLogin(role) {
+            const demoAccount = state.registeredAccounts.find(a => a.role === role) || state.registeredAccounts[0];
+            completeAuthentication(demoAccount, true);
+        }
+
+        function advanceSignupStep() {
+            if (state.authStep === 1) {
+                const nameEl = document.getElementById('signup-name');
+                const emailEl = document.getElementById('signup-email');
+                const matricEl = document.getElementById('signup-matric');
+                state.authForm.name = nameEl ? nameEl.value.trim() : state.authForm.name;
+                state.authForm.email = emailEl ? emailEl.value.trim() : state.authForm.email;
+                state.authForm.matric = matricEl ? matricEl.value.trim() : state.authForm.matric;
+
+                if (!state.authForm.name || !state.authForm.email || !state.authForm.matric) {
+                    showNotification('Please complete your Name, UNIMAS Email & Matric No.');
+                    return;
+                }
+                if (!state.authForm.email.includes('@')) {
+                    showNotification('Use a valid university email (e.g., 99544@siswa.unimas.my).');
+                    return;
+                }
+                state.authStep = 2;
+                showNotification('4-digit verification code sent to ' + state.authForm.email);
+                render();
+            } else if (state.authStep === 2) {
+                const collegeEl = document.getElementById('signup-college');
+                const blockEl = document.getElementById('signup-block');
+                if (collegeEl) state.authForm.college = collegeEl.value;
+                if (blockEl) state.authForm.block = blockEl.value.trim() || 'Block B';
+                state.authStep = 3;
+                render();
+            } else if (state.authStep === 3) {
+                if (state.authForm.role === 'vendor') {
+                    const printerEl = document.getElementById('signup-printer');
+                    const rateEl = document.getElementById('signup-rate');
+                    if (printerEl) state.authForm.printerModel = printerEl.value.trim() || 'Canon PIXMA G3020';
+                    if (rateEl) state.authForm.bwRate = parseFloat(rateEl.value) || 0.15;
+                }
+
+                const newAccount = {
+                    name: state.authForm.name,
+                    email: state.authForm.email,
+                    matric: state.authForm.matric,
+                    role: state.authForm.role,
+                    college: state.authForm.college,
+                    block: state.authForm.block,
+                    printerModel: state.authForm.printerModel,
+                    bwRate: state.authForm.bwRate,
+                    colorRate: 0.50,
+                    walletBalance: 25.00
+                };
+
+                state.registeredAccounts.push(newAccount);
+                if (window.dbService) {
+                    window.dbService.saveUserAccount(newAccount);
+                }
+                completeAuthentication(newAccount, true);
+            }
+        }
+
+        function completeAuthentication(userObj, launchTutorial = true) {
+            state.isAuthenticated = true;
+            state.currentUser = userObj;
+            state.role = userObj.role;
+            state.walletBalance = userObj.walletBalance || 25.00;
+            document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+
+            // If new vendor signed up, ensure they appear in the live vendor list
+            if (userObj.role === 'vendor' && !state.vendors.some(v => v.matric === userObj.matric)) {
+                state.vendors.unshift({
+                    id: Date.now(),
+                    name: userObj.name,
+                    code: userObj.college.includes('Bunga') ? 'KBR' : userObj.college.includes('Tun') ? 'KTR' : 'KSA',
+                    matric: userObj.matric,
+                    college: `${userObj.college} • ${userObj.block}`,
+                    distance: '1 min walk',
+                    printer: userObj.printerModel || 'Student Inkjet Printer',
+                    bwPrice: userObj.bwRate || 0.15,
+                    colorPrice: 0.50,
+                    rating: 5.0,
+                    reviewsCount: 1,
+                    topVendor: false,
+                    holidayAvailable: true,
+                    slots: ['Tonight, 11:45 PM - 12:00 AM', 'Tomorrow, 7:30 AM - 8:00 AM'],
+                    status: 'New Verified Vendor',
+                    recentReviews: [
+                        { user: 'UNIMAS Admin', text: 'Verified student printer setup.', stars: 5 }
+                    ]
+                });
+            }
+
+            if (launchTutorial) {
+                state.showTutorial = true;
+                state.tutorialStep = 0;
+            }
+            updateChromeVisibility();
+            render();
+        }
+
+        function logoutUser() {
+            state.isAuthenticated = false;
+            state.currentUser = null;
+            state.showTutorial = false;
+            state.authStep = 1;
+            state.loginStep = 1;
+            closeModal();
+            updateChromeVisibility();
+            showNotification('Signed out securely.');
+            render();
+        }
+
+        function updateChromeVisibility() {
+            const header = document.getElementById('app-header');
+            const nav = document.getElementById('bottom-nav');
+            const rolePills = document.getElementById('role-pill-container');
+            if (state.isAuthenticated) {
+                header.classList.remove('hidden');
+                nav.classList.remove('hidden');
+                rolePills.classList.remove('hidden');
+                syncRoleHeaderUI();
+            } else {
+                header.classList.add('hidden');
+                nav.classList.add('hidden');
+                rolePills.classList.add('hidden');
+            }
+        }
+
+        // --- TUTORIAL WALKTHROUGH CONTROLS ---
+        function openTutorialOverlay() {
+            state.showTutorial = true;
+            state.tutorialStep = 0;
+            renderTutorial();
+        }
+
+        function nextTutorialStep() {
+            const steps = tutorialContent[state.role];
+            if (state.tutorialStep < steps.length - 1) {
+                state.tutorialStep += 1;
+                renderTutorial();
+            } else {
+                finishTutorial();
+            }
+        }
+
+        function finishTutorial() {
+            state.showTutorial = false;
+            document.getElementById('tutorial-overlay').classList.add('hidden');
+            showNotification(`Welcome to PrintSwift, ${state.currentUser?.name.split(' ')[0] || 'Student'}!`);
+        }
+
+        function renderTutorial() {
+            const overlay = document.getElementById('tutorial-overlay');
+            const card = document.getElementById('tutorial-card');
+            if (!state.showTutorial) {
+                overlay.classList.add('hidden');
+                return;
+            }
+            overlay.classList.remove('hidden');
+            const steps = tutorialContent[state.role];
+            const current = steps[state.tutorialStep];
+
+            card.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span class="px-2.5 py-1 rounded-full ${state.role === 'student' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'} text-[10px] font-extrabold uppercase">
+                        ${current.badge}
+                    </span>
+                    <button onclick="finishTutorial()" class="text-xs font-bold text-slate-400 hover:text-slate-700">Skip</button>
+                </div>
+
+                <div class="py-3 text-center space-y-3">
+                    <div class="w-16 h-16 mx-auto rounded-3xl ${state.role === 'student' ? 'bg-blue-600 text-lime-300' : 'bg-pink-600 text-white'} flex items-center justify-center shadow-lg">
+                        <i data-lucide="${current.icon}" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-lg font-extrabold text-slate-900 leading-snug">${current.title}</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">${current.desc}</p>
+                </div>
+
+                <!-- Step Dots -->
+                <div class="flex justify-center gap-1.5">
+                    ${steps.map((_, idx) => `
+                        <span class="h-1.5 rounded-full transition-all ${idx === state.tutorialStep ? 'w-6 bg-blue-600' : 'w-1.5 bg-slate-200'}"></span>
+                    `).join('')}
+                </div>
+
+                <div class="flex gap-2 pt-1">
+                    ${state.tutorialStep > 0 ? `
+                        <button onclick="state.tutorialStep--; renderTutorial();" class="px-4 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl">Back</button>
+                    ` : ''}
+                    <button onclick="nextTutorialStep()" class="flex-1 py-3 ${state.role === 'student' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-pink-600 hover:bg-pink-700'} text-white font-bold text-xs rounded-2xl shadow-sm transition">
+                        ${state.tutorialStep === steps.length - 1 ? 'Start Using PrintSwift →' : 'Next Tip →'}
+                    </button>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- SYSTEM PROMPT VIEWER MODAL (Satisfying "write a prompt") ---
+        function openPromptModal() {
+            const promptText = `Build a full-featured, mobile-first peer-to-peer student printing web app called "PrintSwift" for UNIMAS students (Techno Group 18). Include:
+1. Database-backed Login & Step-by-Step Sign-Up with @siswa.unimas.my email verification, role selection (Student vs. Student Vendor with printer hardware & rate configuration), and instant demo accounts.
+2. Interactive 4-step Onboarding Tutorial tailored to the selected role before entering the app.
+3. Student Flow: Search & filter verified residential college vendors (Kolej Bunga Raya, Kolej Tun Razak, Kolej Sakura, Public Holiday slots), upload documents with Auto-Delete Privacy Control, customize print specs (B&W/Color, Duplex, Staple), book 24/7 slots, pay via DuitNow QR or Campus E-Wallet Escrow, chat in-app, verify pick-up via QR/PIN, submit Reprint Guarantee claims, and rate vendors.
+4. Vendor Desk Flow: Toggle online/offline status, manage incoming print queue (Start Print -> Mark Ready), customize 24/7 time slots, and track spare-capacity earnings.`;
+
+            openModal(`
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                        <i data-lucide="terminal" class="w-4 h-4 text-blue-600"></i>
+                        <h3 class="text-sm font-extrabold text-slate-900">App Architecture Prompt</h3>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <p class="text-[11px] text-slate-500">Use or copy this structured prompt specification for your PrintSwift prototype:</p>
+                <textarea id="prompt-copy-area" readonly rows="8" class="w-full p-3 rounded-2xl bg-slate-900 text-lime-300 font-mono text-[11px] leading-relaxed border border-slate-700 focus:outline-none">${promptText}</textarea>
+                <button onclick="copyPromptText()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5">
+                    <i data-lucide="copy" class="w-4 h-4"></i> Copy Prompt to Clipboard
+                </button>
+            `);
+        }
+
+        function copyPromptText() {
+            const area = document.getElementById('prompt-copy-area');
+            if (!area) return;
+            area.select();
+            document.execCommand('copy');
+            showNotification('PrintSwift system prompt copied!');
+        }
+
+        // --- PRICING & CALCULATIONS ---
+        function calculateOrderTotal() {
+            const vendor = state.vendors.find(v => v.id === state.selectedVendorId) || state.vendors[0];
+            const rate = state.orderForm.colorMode === 'bw' ? vendor.bwPrice : vendor.colorPrice;
+            const effectiveSheets = state.orderForm.doubleSided ? Math.ceil(state.orderForm.pages / 2) : state.orderForm.pages;
+            const printCost = effectiveSheets * state.orderForm.copies * rate;
+            const finishingCost = state.orderForm.stapleBind ? 0.50 : 0.00;
+            const platformFee = 0.20;
+            return {
+                rate,
+                effectiveSheets,
+                printCost: printCost.toFixed(2),
+                finishingCost: finishingCost.toFixed(2),
+                platformFee: platformFee.toFixed(2),
+                total: (printCost + finishingCost + platformFee).toFixed(2)
+            };
+        }
+
+        // --- ROLE & NAVIGATION ---
+        function syncRoleHeaderUI() {
+            const pillStudent = document.getElementById('pill-student');
+            const pillVendor = document.getElementById('pill-vendor');
+            const subtitle = document.getElementById('header-subtitle');
+            const userName = state.currentUser?.name?.split(' ')[0] || 'Student';
+
+            if (state.role === 'student') {
+                pillStudent.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-lime-300 text-slate-900 transition';
+                pillVendor.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold text-blue-100 hover:text-white transition';
+                subtitle.textContent = `${state.currentUser?.college || 'Kolej Bunga Raya'} • Hi, ${userName}`;
+            } else {
+                pillVendor.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-pink-500 text-white transition';
+                pillStudent.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold text-blue-100 hover:text-white transition';
+                subtitle.textContent = `Vendor Desk • ${userName} (${state.currentUser?.matric || '98124'})`;
+            }
+        }
+
+        function switchRole(role) {
+            state.role = role;
+            syncRoleHeaderUI();
+            render();
+        }
+
+        function setStudentTab(tab) {
+            state.studentTab = tab;
+            render();
+        }
+
+        function setVendorTab(tab) {
+            state.vendorTab = tab;
+            render();
+        }
+
+        // --- INTERACTIVE MODALS ---
+        function openVendorProfile(vendorId) {
+            const v = state.vendors.find(x => x.id === vendorId);
+            if (!v) return;
+            openModal(`
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="flex items-center gap-1.5">
+                            <h3 class="text-base font-extrabold text-slate-900">${v.name}</h3>
+                            ${v.topVendor ? '<span class="px-2 py-0.5 bg-lime-200 text-slate-900 text-[10px] font-extrabold rounded-md">TOP VENDOR</span>' : ''}
+                        </div>
+                        <p class="text-xs text-slate-500">Verified UNIMAS • Matric ${v.matric}</p>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <div class="bg-slate-50 p-3 rounded-2xl space-y-1.5 text-xs border border-slate-100">
+                    <div class="flex justify-between"><span class="text-slate-500">Location:</span><span class="font-bold text-slate-800">${v.college}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Printer Hardware:</span><span class="font-bold text-slate-800">${v.printer}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Rates:</span><span class="font-bold text-blue-600">RM${v.bwPrice.toFixed(2)} B&W • RM${v.colorPrice.toFixed(2)} Color</span></div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">Student Reviews (${v.reviewsCount})</h4>
+                    <div class="space-y-2">
+                        ${v.recentReviews.map(r => `
+                            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                                <div class="flex justify-between font-bold text-slate-800 mb-0.5">
+                                    <span>${r.user}</span>
+                                    <span class="text-amber-500">${'★'.repeat(r.stars)}</span>
+                                </div>
+                                <p class="text-slate-600 text-[11px]">"${r.text}"</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-1">
+                    <button onclick="closeModal(); openVendorChat(${v.id});" class="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-2xl flex items-center gap-1.5">
+                        <i data-lucide="message-circle" class="w-4 h-4"></i> Chat
+                    </button>
+                    <button onclick="closeModal(); selectVendorAndBook(${v.id});" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm">
+                        Book Print Slot
+                    </button>
+                </div>
+            `);
+        }
+
+        function openPickupVerificationModal(orderId) {
+            const order = state.orders.find(o => o.id === orderId);
+            if (!order) return;
+            openModal(`
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-extrabold text-slate-900">Verify Pick-Up & Release</h3>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <div class="bg-slate-900 text-white p-4 rounded-3xl text-center space-y-2 relative overflow-hidden">
+                    <p class="text-[11px] text-slate-300">Show this Pick-Up PIN or scan vendor QR at <span class="text-lime-300 font-bold">${order.pickup}</span></p>
+                    <div class="relative w-32 h-32 mx-auto bg-white rounded-2xl p-2 flex items-center justify-center">
+                        <i data-lucide="qr-code" class="w-24 h-24 text-slate-900"></i>
+                        <div class="animate-scanline absolute left-2 right-2 h-0.5 bg-pink-500 shadow-[0_0_8px_#ec4899]"></div>
+                    </div>
+                    <div class="text-xl font-black tracking-[0.25em] text-lime-300 pt-1">#${order.pickupCode}</div>
+                </div>
+
+                <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-start gap-2">
+                    <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+                    <span>Confirming pick-up releases <strong>RM${order.total.toFixed(2)}</strong> from escrow and triggers <strong>immediate file auto-deletion</strong>.</span>
+                </div>
+
+                <div class="flex gap-2">
+                    <button onclick="openReprintModal('${order.id}')" class="px-3.5 py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-2xl">
+                        Print Issue?
+                    </button>
+                    <button onclick="closeModal(); confirmPickup('${order.id}');" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm">
+                        Confirm Handover Complete
+                    </button>
+                </div>
+            `);
+        }
+
+        function openReprintModal(orderId) {
+            openModal(`
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-extrabold text-slate-900">PrintSwift Reprint Guarantee</h3>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <p class="text-xs text-slate-600">Your escrow payment stays frozen until you get clean, readable pages. Select the issue:</p>
+                <div class="space-y-2 text-xs">
+                    ${['Smudged / Low Ink Quality', 'Missing or Cut-Off Pages', 'Wrong Print Settings (Color/Duplex)'].map(reason => `
+                        <button onclick="submitReprintClaim('${orderId}', '${reason}')" class="w-full p-3 text-left font-bold rounded-2xl border border-slate-200 hover:border-rose-400 hover:bg-rose-50 transition flex items-center justify-between">
+                            <span>${reason}</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4 text-rose-600"></i>
+                        </button>
+                    `).join('')}
+                </div>
+            `);
+        }
+
+        function submitReprintClaim(orderId, reason) {
+            const order = state.orders.find(o => o.id === orderId);
+            if (order) {
+                order.status = 'reprint_requested';
+                order.reprintReason = reason;
+                if (window.dbService) window.dbService.saveOrder(order);
+            }
+            closeModal();
+            showNotification('Reprint Guarantee triggered! Escrow held & vendor alerted.');
+            render();
+        }
+
+        function openRatingModal(orderId) {
+            openModal(`
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-extrabold text-slate-900">Rate Student Vendor</h3>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <p class="text-xs text-slate-600">Two-way ratings help top student vendors earn their badge.</p>
+                <div class="flex justify-center gap-2 py-2">
+                    ${[1,2,3,4,5].map(s => `
+                        <button onclick="rateOrder('${orderId}', ${s}); closeModal();" class="w-11 h-11 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-500 font-extrabold text-sm flex flex-col items-center justify-center transition">
+                            <span>${s}★</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `);
+        }
+
+        function openWalletModal() {
+            openModal(`
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-extrabold text-slate-900">Campus E-Wallet & DuitNow</h3>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 rounded-2xl">
+                    <span class="text-[11px] text-blue-100">Available Balance</span>
+                    <div class="text-2xl font-black mt-0.5">RM${state.walletBalance.toFixed(2)}</div>
+                    <span class="text-[10px] text-lime-300 font-semibold">Linked: DuitNow QR / Touch 'n Go eWallet</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    ${[5, 10, 20].map(amt => `
+                        <button onclick="topUpWallet(${amt})" class="py-2.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 font-extrabold text-xs rounded-xl border border-slate-200 transition">
+                            + RM${amt}
+                        </button>
+                    `).join('')}
+                </div>
+            `);
+        }
+
+        function topUpWallet(amount) {
+            state.walletBalance += amount;
+            if (state.currentUser) {
+                state.currentUser.walletBalance = state.walletBalance;
+                if (window.dbService) window.dbService.saveUserAccount(state.currentUser);
+            }
+            document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+            closeModal();
+            showNotification(`Topped up RM${amount.toFixed(2)} via DuitNow QR!`);
+            render();
+        }
+
+        function openProfileModal() {
+            const u = state.currentUser || { name: 'Calvin Joseph Param', email: '98387@siswa.unimas.my', college: 'Kolej Bunga Raya', block: 'Block B' };
+            openModal(`
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-extrabold text-slate-900">Verified Student Profile</h3>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-extrabold flex items-center justify-center">${u.name.slice(0,2).toUpperCase()}</div>
+                        <div>
+                            <div class="font-extrabold text-slate-900">${u.name}</div>
+                            <div class="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                                <i data-lucide="badge-check" class="w-3.5 h-3.5"></i> ${u.email}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-200 flex justify-between text-[11px]">
+                        <span class="text-slate-500">Residential College:</span>
+                        <span class="font-bold text-slate-800">${u.college} (${u.block || 'Block B'})</span>
+                    </div>
+                    <div class="flex justify-between text-[11px]">
+                        <span class="text-slate-500">Active Role:</span>
+                        <span class="font-bold text-blue-600 uppercase">${state.role}</span>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <button onclick="closeModal(); openTutorialOverlay();" class="w-full py-2.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5">
+                        <i data-lucide="play-circle" class="w-4 h-4"></i> Replay App Tutorial
+                    </button>
+                    <button onclick="closeModal(); openPromptModal();" class="w-full py-2.5 bg-slate-100 text-slate-800 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5">
+                        <i data-lucide="terminal" class="w-4 h-4"></i> View App Prompt
+                    </button>
+                    <button onclick="logoutUser()" class="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5">
+                        <i data-lucide="log-out" class="w-4 h-4"></i> Sign Out / Switch Account
+                    </button>
+                </div>
+            `);
+        }
+
+        // --- STUDENT FLOW ACTIONS ---
+        function selectVendorAndBook(vendorId) {
+            state.selectedVendorId = vendorId;
+            const v = state.vendors.find(x => x.id === vendorId);
+            if (v && v.slots.length > 0) {
+                state.orderForm.slot = v.slots[0];
+                state.orderForm.pickupPoint = v.college + ' Lobby';
+            }
+            state.uploadStep = 1;
+            state.studentTab = 'upload';
+            render();
+        }
+
+        function openVendorChat(vendorId) {
+            state.activeChatVendorId = vendorId;
+            state.studentTab = 'chat';
+            render();
+        }
+
+        function triggerRealFileUpload() {
+            document.getElementById('real-file-input').click();
+        }
+
+        function handleRealFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const estimatedPages = Math.max(1, Math.min(60, Math.round(file.size / 45000) || 8));
+            state.orderForm.fileName = file.name;
+            state.orderForm.fileSize = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+            state.orderForm.pages = estimatedPages;
+            showNotification(`Uploaded "${file.name}" (${estimatedPages} pages detected)`);
+            render();
+        }
+
+        function cycleSampleFile() {
+            const samples = [
+                { name: 'FYP_Proposal_Draft_v3.pdf', size: '2.1 MB', pages: 22 },
+                { name: 'Scholarship_Application_Form.pdf', size: '0.6 MB', pages: 4 },
+                { name: 'Exam_Revision_Notes_LU4.pdf', size: '1.8 MB', pages: 18 },
+                { name: 'TMC2013_Group18_FinalReport.pdf', size: '1.4 MB', pages: 14 }
+            ];
+            const idx = samples.findIndex(s => s.name === state.orderForm.fileName);
+            const next = samples[(idx + 1) % samples.length];
+            state.orderForm.fileName = next.name;
+            state.orderForm.fileSize = next.size;
+            state.orderForm.pages = next.pages;
+            showNotification(`Loaded sample "${next.name}" (${next.pages} pages)`);
+            render();
+        }
+
+        function submitOrder() {
+            const vendor = state.vendors.find(v => v.id === state.selectedVendorId) || state.vendors[0];
+            const pricing = calculateOrderTotal();
+            const totalNum = parseFloat(pricing.total);
+
+            if (state.orderForm.paymentMethod === 'Campus E-Wallet') {
+                if (state.walletBalance < totalNum) {
+                    showNotification('Insufficient wallet balance. Top up or use DuitNow QR!');
+                    return;
+                }
+                state.walletBalance -= totalNum;
+                document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+            }
+
+            const newOrder = {
+                id: 'PS-2026-' + Math.floor(100 + Math.random() * 900),
+                pickupCode: Math.floor(1000 + Math.random() * 9000).toString(),
+                studentName: `${state.currentUser?.name || 'Student'} (${state.currentUser?.matric || '98387'})`,
+                vendorId: vendor.id,
+                vendorName: `${vendor.name} (${vendor.code})`,
+                fileName: state.orderForm.fileName,
+                pages: state.orderForm.pages,
+                copies: state.orderForm.copies,
+                colorMode: state.orderForm.colorMode,
+                doubleSided: state.orderForm.doubleSided,
+                total: totalNum,
+                slot: state.orderForm.slot,
+                pickup: state.orderForm.pickupPoint,
+                status: 'paid_escrow',
+                autoDelete: state.orderForm.autoDelete,
+                fileDeleted: false,
+                rated: false,
+                reprintReason: '',
+                createdAt: Date.now()
+            };
+
+            state.orders.unshift(newOrder);
+            if (window.dbService) window.dbService.saveOrder(newOrder);
+
+            if (!state.chats[vendor.id]) state.chats[vendor.id] = [];
+            state.chats[vendor.id].push({
+                sender: 'student',
+                text: `Sent "${newOrder.fileName}" (${newOrder.pages} pgs) for slot ${newOrder.slot}. Pick-up at ${newOrder.pickup}.`,
+                time: 'Now'
+            });
+
+            state.uploadStep = 1;
+            state.studentTab = 'orders';
+            showNotification(`RM${pricing.total} saved to DB & held in Escrow!`);
+            render();
+        }
+
+        function confirmPickup(orderId) {
+            const order = state.orders.find(o => o.id === orderId);
+            if (order) {
+                order.status = 'completed';
+                if (order.autoDelete) {
+                    order.fileDeleted = true;
+                }
+                state.vendorEarnings += (order.total - 0.20);
+                if (window.dbService) window.dbService.saveOrder(order);
+                showNotification('Pick-up verified! Escrow released & file permanently wiped.');
+                render();
+            }
+        }
+
+        function rateOrder(orderId, stars = 5) {
+            const order = state.orders.find(o => o.id === orderId);
+            if (order) {
+                order.rated = true;
+                order.ratingGiven = stars;
+                if (window.dbService) window.dbService.saveOrder(order);
+                showNotification(`Submitted ${stars}★ rating! Thank you.`);
+                render();
+            }
+        }
+
+        function sendChatMessage(quickText = null) {
+            const input = document.getElementById('chat-input');
+            const text = quickText || (input ? input.value.trim() : '');
+            if (!text) return;
+
+            const vid = state.activeChatVendorId;
+            if (!state.chats[vid]) state.chats[vid] = [];
+            state.chats[vid].push({ sender: 'student', text, time: '23:44' });
+            if (input) input.value = '';
+            render();
+
+            setTimeout(() => {
+                state.chats[vid].push({
+                    sender: 'vendor',
+                    text: 'Got it! Printing right now—will ping you when it is ready for pick-up.',
+                    time: '23:44'
+                });
+                if (state.studentTab === 'chat') render();
+            }, 800);
+        }
+
+        // --- VENDOR FLOW ACTIONS ---
+        function toggleVendorOnline() {
+            state.vendorOnline = !state.vendorOnline;
+            showNotification(state.vendorOnline ? 'You are ONLINE for late-night print slots.' : 'You are OFFLINE.');
+            render();
+        }
+
+        function toggleSlot(index) {
+            state.vendorSlots[index].active = !state.vendorSlots[index].active;
+            render();
+        }
+
+        function advanceOrderStatus(orderId) {
+            const order = state.orders.find(o => o.id === orderId);
+            if (!order) return;
+            if (order.status === 'paid_escrow' || order.status === 'reprint_requested') {
+                order.status = 'printing';
+                showNotification(`Printing "${order.fileName}" via encrypted viewer...`);
+            } else if (order.status === 'printing') {
+                order.status = 'ready';
+                showNotification(`Marked READY! Student notified for pick-up at ${order.pickup}`);
+            }
+            if (window.dbService) window.dbService.saveOrder(order);
+            render();
+        }
+
+        // --- RENDER STEP-BY-STEP LOGIN & SIGN-UP SCREEN ---
+        function renderAuthScreen() {
+            const isSignup = state.authMode === 'signup';
+
+            return `
+                <div class="space-y-4 py-1">
+                    <!-- Brand Header -->
+                    <div class="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 text-white p-5 rounded-3xl shadow-md">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <div class="w-9 h-9 rounded-2xl bg-lime-300 text-slate-900 flex items-center justify-center font-black text-lg">P</div>
+                                <div>
+                                    <h1 class="font-extrabold text-base leading-none">PrintSwift</h1>
+                                    <span class="text-[10px] text-blue-200 font-semibold">UNIMAS Peer-to-Peer Printing</span>
+                                </div>
+                            </div>
+                            <button onclick="openPromptModal()" class="px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 text-[10px] font-bold text-lime-300 flex items-center gap-1">
+                                <i data-lucide="terminal" class="w-3 h-3"></i> Prompt
+                            </button>
+                        </div>
+                        <h2 class="text-sm font-extrabold">Print any hour, with a student printer nearby.</h2>
+                        <p class="text-[11px] text-blue-100 mt-0.5">Sign in with your verified university ID as a Student or Student Vendor.</p>
+                    </div>
+
+                    <!-- Mode Switch Tabs (Login vs Sign Up) -->
+                    <div class="grid grid-cols-2 bg-slate-200/80 p-1 rounded-2xl text-xs font-extrabold">
+                        <button onclick="setAuthMode('login')" class="py-2 rounded-xl transition ${!isSignup ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}">
+                            Step Login
+                        </button>
+                        <button onclick="setAuthMode('signup')" class="py-2 rounded-xl transition ${isSignup ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}">
+                            Create Account
+                        </button>
+                    </div>
+
+                    ${!isSignup ? `
+                        <!-- STEP-BY-STEP LOGIN FLOW -->
+                        <div class="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-extrabold text-blue-600 uppercase">Login Step ${state.loginStep} of 2</span>
+                                <div class="flex gap-1">
+                                    <span class="w-5 h-1.5 rounded-full ${state.loginStep >= 1 ? 'bg-blue-600' : 'bg-slate-200'}"></span>
+                                    <span class="w-5 h-1.5 rounded-full ${state.loginStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}"></span>
+                                </div>
+                            </div>
+
+                            ${state.loginStep === 1 ? `
+                                <!-- Step 1: Choose Role & UNIMAS Email -->
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1.5">1. Select Your Portal Role</label>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button onclick="selectAuthRole('student')" class="p-3 rounded-2xl border text-left transition ${state.authForm.role === 'student' ? 'border-blue-600 bg-blue-50/70' : 'border-slate-200'}">
+                                            <i data-lucide="graduation-cap" class="w-5 h-5 text-blue-600 mb-1"></i>
+                                            <div class="text-xs font-extrabold text-slate-900">Student</div>
+                                            <div class="text-[10px] text-slate-500">Upload & print 24/7</div>
+                                        </button>
+                                        <button onclick="selectAuthRole('vendor')" class="p-3 rounded-2xl border text-left transition ${state.authForm.role === 'vendor' ? 'border-pink-500 bg-pink-50/70' : 'border-slate-200'}">
+                                            <i data-lucide="printer" class="w-5 h-5 text-pink-600 mb-1"></i>
+                                            <div class="text-xs font-extrabold text-slate-900">Student Vendor</div>
+                                            <div class="text-[10px] text-slate-500">Earn from your printer</div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">2. UNIMAS Student Email</label>
+                                    <input id="login-email" type="email" value="${state.authForm.email || (state.authForm.role === 'student' ? '98387@siswa.unimas.my' : '98124@siswa.unimas.my')}" placeholder="matric@siswa.unimas.my" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs font-semibold bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+
+                                <button onclick="advanceLoginStep()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm transition">
+                                    Verify UNIMAS ID →
+                                </button>
+                            ` : `
+                                <!-- Step 2: Password / OTP Security Check -->
+                                <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
+                                    <div>
+                                        <span class="text-[10px] font-bold text-emerald-700 uppercase">Verified Identity</span>
+                                        <div class="font-extrabold text-slate-900">${state.authForm.email}</div>
+                                    </div>
+                                    <button onclick="state.loginStep=1; render()" class="text-[11px] font-bold text-blue-600 underline">Change</button>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Password or 4-Digit Siswa OTP</label>
+                                    <input type="password" value="••••••••" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50">
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <button onclick="state.loginStep=1; render()" class="px-4 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl">Back</button>
+                                    <button onclick="advanceLoginStep()" class="flex-1 py-3 ${state.authForm.role === 'student' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-pink-600 hover:bg-pink-700'} text-white font-bold text-xs rounded-2xl shadow-sm">
+                                        Enter ${state.authForm.role === 'student' ? 'Student' : 'Vendor'} App →
+                                    </button>
+                                </div>
+                            `}
+                        </div>
+
+                        <!-- 1-Tap Instant Demo Accounts -->
+                        <div class="bg-white p-3.5 rounded-3xl border border-slate-200/80 space-y-2">
+                            <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Instant Database Demo Accounts</div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="quickDemoLogin('student')" class="p-2.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 text-left transition">
+                                    <div class="text-[11px] font-extrabold text-blue-700">Demo Student</div>
+                                    <div class="text-[10px] text-slate-500 truncate">Calvin (98387 • KBR)</div>
+                                </button>
+                                <button onclick="quickDemoLogin('vendor')" class="p-2.5 rounded-2xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-left transition">
+                                    <div class="text-[11px] font-extrabold text-pink-700">Demo Vendor</div>
+                                    <div class="text-[10px] text-slate-500 truncate">Amirul (98124 • Canon)</div>
+                                </button>
+                            </div>
+                        </div>
+                    ` : `
+                        <!-- STEP-BY-STEP SIGN-UP FLOW (3 STEPS) -->
+                        <div class="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-extrabold text-blue-600 uppercase">Sign Up Step ${state.authStep} of 3</span>
+                                <div class="flex gap-1">
+                                    <span class="w-5 h-1.5 rounded-full ${state.authStep >= 1 ? 'bg-blue-600' : 'bg-slate-200'}"></span>
+                                    <span class="w-5 h-1.5 rounded-full ${state.authStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}"></span>
+                                    <span class="w-5 h-1.5 rounded-full ${state.authStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}"></span>
+                                </div>
+                            </div>
+
+                            ${state.authStep === 1 ? `
+                                <!-- Step 1: Role + Name + Matric + University Email -->
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button onclick="selectAuthRole('student')" class="p-2.5 rounded-2xl border text-left transition ${state.authForm.role === 'student' ? 'border-blue-600 bg-blue-50/70' : 'border-slate-200'}">
+                                        <div class="text-xs font-extrabold text-slate-900">Student Account</div>
+                                        <div class="text-[10px] text-slate-500">Order prints anytime</div>
+                                    </button>
+                                    <button onclick="selectAuthRole('vendor')" class="p-2.5 rounded-2xl border text-left transition ${state.authForm.role === 'vendor' ? 'border-pink-500 bg-pink-50/70' : 'border-slate-200'}">
+                                        <div class="text-xs font-extrabold text-slate-900">Vendor Account</div>
+                                        <div class="text-[10px] text-slate-500">Host your printer</div>
+                                    </button>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <input id="signup-name" type="text" value="${state.authForm.name}" placeholder="Full Name (e.g., Luqman Najib)" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs bg-slate-50">
+                                    <input id="signup-matric" type="text" value="${state.authForm.matric}" placeholder="UNIMAS Matric Number (e.g., 99544)" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs bg-slate-50">
+                                    <input id="signup-email" type="email" value="${state.authForm.email}" placeholder="99544@siswa.unimas.my" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs bg-slate-50">
+                                </div>
+
+                                <button onclick="advanceSignupStep()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm">
+                                    Next: Verify Email & Hostel →
+                                </button>
+                            ` : state.authStep === 2 ? `
+                                <!-- Step 2: OTP Verification + Residential College -->
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">4-Digit Verification Code (Sent to Email)</label>
+                                    <input type="text" value="${state.authForm.otp}" maxlength="4" class="w-full p-2.5 rounded-2xl border border-emerald-300 bg-emerald-50/50 text-center font-black tracking-[0.4em] text-sm text-emerald-900">
+                                </div>
+
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Residential College / Campus Zone</label>
+                                    <select id="signup-college" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50">
+                                        <option value="Kolej Bunga Raya">Kolej Bunga Raya (KBR)</option>
+                                        <option value="Kolej Tun Razak">Kolej Tun Razak (KTR)</option>
+                                        <option value="Kolej Sakura">Kolej Sakura (KSA)</option>
+                                        <option value="Kolej Allamanda">Kolej Allamanda (KAL)</option>
+                                        <option value="Off-Campus / Desa Ilmu">Off-Campus / Desa Ilmu</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Hostel Block / Pick-Up Lobby</label>
+                                    <input id="signup-block" type="text" value="${state.authForm.block}" placeholder="e.g., Block B Lobby" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs bg-slate-50">
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <button onclick="state.authStep=1; render()" class="px-4 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl">Back</button>
+                                    <button onclick="advanceSignupStep()" class="flex-1 py-3 bg-blue-600 text-white font-bold text-xs rounded-2xl shadow-sm">
+                                        Next: ${state.authForm.role === 'vendor' ? 'Printer Setup' : 'Privacy & Wallet'} →
+                                    </button>
+                                </div>
+                            ` : `
+                                <!-- Step 3: Role-Specific Setup (Printer Setup vs Privacy/Wallet) -->
+                                ${state.authForm.role === 'vendor' ? `
+                                    <div class="space-y-2.5">
+                                        <div class="p-2.5 rounded-2xl bg-pink-50 border border-pink-200 text-[11px] text-pink-900 font-semibold">
+                                            Configure your student printer & per-page rate (RM0.15 – RM0.25/pg):
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Printer Model</label>
+                                            <input id="signup-printer" type="text" value="${state.authForm.printerModel}" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs bg-slate-50">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Black & White Rate (RM per sheet)</label>
+                                            <select id="signup-rate" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50">
+                                                <option value="0.15">RM0.15 / page (Recommended)</option>
+                                                <option value="0.18">RM0.18 / page</option>
+                                                <option value="0.20">RM0.20 / page</option>
+                                                <option value="0.25">RM0.25 / page (Late-Night Express)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                ` : `
+                                    <div class="p-3 rounded-2xl bg-slate-900 text-white space-y-2 text-xs">
+                                        <div class="flex items-center gap-2 text-lime-300 font-extrabold">
+                                            <i data-lucide="shield-check" class="w-4 h-4"></i> Privacy & Escrow Activated
+                                        </div>
+                                        <p class="text-[11px] text-slate-300 leading-relaxed">
+                                            Your account comes with <strong>Auto-Delete file protection</strong> and <strong>RM25.00 starter Campus E-Wallet credit</strong> for testing.
+                                        </p>
+                                    </div>
+                                `}
+
+                                <div class="flex gap-2">
+                                    <button onclick="state.authStep=2; render()" class="px-4 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl">Back</button>
+                                    <button onclick="advanceSignupStep()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm">
+                                        Save to DB & Start Tutorial →
+                                    </button>
+                                </div>
+                            `}
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        // --- RENDER STUDENT VIEWS ---
+        function renderStudentHome() {
+            const activeOrder = state.orders.find(o => o.status !== 'completed');
+            const filteredVendors = state.vendors.filter(v => {
+                const matchesSearch = v.name.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+                                      v.college.toLowerCase().includes(state.searchQuery.toLowerCase());
+                const matchesFilter = state.collegeFilter === 'All' ||
+                                      (state.collegeFilter === 'Holiday' ? v.holidayAvailable : v.code === state.collegeFilter);
+                return matchesSearch && matchesFilter;
+            });
+
+            return `
+                <!-- Compact Action Hero -->
+                <div class="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-4 rounded-3xl shadow-md">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="px-2 py-0.5 rounded-full bg-lime-300 text-slate-900 text-[10px] font-extrabold uppercase">Shops Closed • 24/7 Slots</span>
+                        <span class="text-[11px] text-blue-200 flex items-center gap-1"><i data-lucide="moon" class="w-3.5 h-3.5 text-lime-300"></i> Late Night Active</span>
+                    </div>
+                    <h2 class="text-base font-extrabold leading-snug">Print any hour with a nearby student</h2>
+                    <p class="text-[11px] text-slate-300 mt-0.5 mb-3">Book a slot, pay via escrow, and files auto-delete after pick-up.</p>
+                    <div class="flex gap-2">
+                        <button onclick="setStudentTab('upload')" class="flex-1 py-2.5 px-3 bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs rounded-2xl shadow-sm transition flex items-center justify-center gap-1.5">
+                            <i data-lucide="upload-cloud" class="w-4 h-4"></i> Quick Print
+                        </button>
+                        <button onclick="setStudentTab('orders')" class="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl transition flex items-center gap-1.5">
+                            <i data-lucide="clock" class="w-4 h-4 text-lime-300"></i> Track (${state.orders.length})
+                        </button>
+                    </div>
+                </div>
+
+                ${activeOrder ? `
+                <!-- Live Order Status Pill -->
+                <div onclick="setStudentTab('orders')" class="cursor-pointer bg-amber-50 border border-amber-200 p-3 rounded-2xl flex items-center justify-between hover:bg-amber-100/70 transition">
+                    <div class="flex items-center gap-2.5 overflow-hidden">
+                        <div class="w-8 h-8 rounded-xl bg-amber-400/25 text-amber-800 flex items-center justify-center shrink-0">
+                            <i data-lucide="printer" class="w-4 h-4"></i>
+                        </div>
+                        <div class="truncate">
+                            <div class="text-xs font-extrabold text-slate-900 truncate">${activeOrder.fileName}</div>
+                            <p class="text-[11px] text-amber-800 font-medium truncate">
+                                ${activeOrder.status === 'ready' ? 'Ready! Tap to show PIN #' + activeOrder.pickupCode : 'In progress • ' + activeOrder.vendorName}
+                            </p>
+                        </div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-amber-700 shrink-0"></i>
+                </div>
+                ` : ''}
+
+                <!-- Search & College Filter Chips -->
+                <div class="space-y-2">
+                    <div class="relative">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5"></i>
+                        <input type="text" value="${state.searchQuery}" oninput="state.searchQuery=this.value; render()" placeholder="Search college, block, or student vendor..." class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                        ${[
+                            { id: 'All', label: 'All Campus' },
+                            { id: 'KBR', label: 'Kolej Bunga Raya' },
+                            { id: 'KTR', label: 'Kolej Tun Razak' },
+                            { id: 'KSA', label: 'Kolej Sakura' },
+                            { id: 'Holiday', label: 'Public Holiday' }
+                        ].map(f => `
+                            <button onclick="state.collegeFilter='${f.id}'; render()" class="px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition ${state.collegeFilter === f.id ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}">
+                                ${f.label}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Vendor List -->
+                <div class="space-y-2.5">
+                    ${filteredVendors.map(v => `
+                        <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-blue-300 transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <div onclick="openVendorProfile(${v.id})" class="cursor-pointer">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-extrabold text-sm text-slate-900 hover:text-blue-600">${v.name}</span>
+                                        ${v.topVendor ? `<span class="px-1.5 py-0.5 bg-lime-200 text-slate-900 text-[9px] font-extrabold rounded-md flex items-center gap-0.5"><i data-lucide="award" class="w-2.5 h-2.5"></i> TOP</span>` : ''}
+                                    </div>
+                                    <p class="text-[11px] text-slate-500">${v.college} • <span class="text-blue-600 font-semibold">${v.distance}</span></p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs font-extrabold text-slate-900">RM${v.bwPrice.toFixed(2)}<span class="text-[10px] font-normal text-slate-500">/pg</span></div>
+                                    <div class="text-[11px] font-semibold text-amber-500 flex items-center justify-end gap-0.5">
+                                        <i data-lucide="star" class="w-3 h-3 fill-amber-400 text-amber-400"></i> ${v.rating} (${v.reviewsCount})
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-100 gap-1.5">
+                                <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ${v.status}
+                                </span>
+                                <div class="flex items-center gap-1.5">
+                                    <button onclick="openVendorProfile(${v.id})" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl transition">
+                                        Reviews
+                                    </button>
+                                    <button onclick="selectVendorAndBook(${v.id})" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-xl transition">
+                                        Book Slot
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderStudentUpload() {
+            const vendor = state.vendors.find(v => v.id === state.selectedVendorId) || state.vendors[0];
+            const pricing = calculateOrderTotal();
+
+            return `
+                <!-- Stepper -->
+                <div class="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm">
+                    <div class="flex items-center justify-between text-[10px] font-bold">
+                        <button onclick="state.uploadStep=1; render()" class="flex items-center gap-1 ${state.uploadStep >= 1 ? 'text-blue-600' : 'text-slate-400'}">
+                            <span class="w-5 h-5 rounded-full ${state.uploadStep >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-200'} flex items-center justify-center">1</span>
+                            Document
+                        </button>
+                        <div class="h-0.5 flex-1 mx-2 ${state.uploadStep >= 2 ? 'bg-blue-600' : 'bg-slate-200'}"></div>
+                        <button onclick="state.uploadStep=2; render()" class="flex items-center gap-1 ${state.uploadStep >= 2 ? 'text-blue-600' : 'text-slate-400'}">
+                            <span class="w-5 h-5 rounded-full ${state.uploadStep >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-200'} flex items-center justify-center">2</span>
+                            Slot & Meetup
+                        </button>
+                        <div class="h-0.5 flex-1 mx-2 ${state.uploadStep >= 3 ? 'bg-blue-600' : 'bg-slate-200'}"></div>
+                        <button onclick="state.uploadStep=3; render()" class="flex items-center gap-1 ${state.uploadStep >= 3 ? 'text-blue-600' : 'text-slate-400'}">
+                            <span class="w-5 h-5 rounded-full ${state.uploadStep >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-200'} flex items-center justify-center">3</span>
+                            Escrow Pay
+                        </button>
+                    </div>
+                </div>
+
+                ${state.uploadStep === 1 ? `
+                    <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3.5">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-extrabold text-sm text-slate-900">1. Upload & Print Specs</h3>
+                            <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <i data-lucide="lock" class="w-3 h-3"></i> In-App Vault
+                            </span>
+                        </div>
+
+                        <!-- Interactive File Dropzone -->
+                        <div class="p-3 bg-blue-50/70 border border-dashed border-blue-300 rounded-2xl space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2.5 overflow-hidden">
+                                    <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                                        <i data-lucide="file-text" class="w-5 h-5"></i>
+                                    </div>
+                                    <div class="truncate">
+                                        <p class="text-xs font-bold text-slate-900 truncate">${state.orderForm.fileName}</p>
+                                        <p class="text-[11px] text-slate-500">${state.orderForm.pages} pages • ${state.orderForm.fileSize}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex gap-1.5 pt-1">
+                                <button onclick="triggerRealFileUpload()" class="flex-1 py-1.5 bg-blue-600 text-white text-[11px] font-bold rounded-xl hover:bg-blue-700 transition">
+                                    Browse Device File
+                                </button>
+                                <button onclick="cycleSampleFile()" class="px-2.5 py-1.5 bg-white border border-slate-200 text-[11px] font-bold text-slate-700 rounded-xl hover:bg-slate-50 transition">
+                                    Sample PDF
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Page Count & Copies Stepper -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                                <span class="text-[10px] font-bold text-slate-500 block mb-1">Total Pages</span>
+                                <div class="flex items-center justify-between">
+                                    <button onclick="state.orderForm.pages=Math.max(1, state.orderForm.pages-1); render()" class="w-7 h-7 rounded-lg bg-white border border-slate-200 font-bold text-xs">-</button>
+                                    <span class="text-xs font-extrabold">${state.orderForm.pages}</span>
+                                    <button onclick="state.orderForm.pages+=1; render()" class="w-7 h-7 rounded-lg bg-white border border-slate-200 font-bold text-xs">+</button>
+                                </div>
+                            </div>
+                            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                                <span class="text-[10px] font-bold text-slate-500 block mb-1">Copies</span>
+                                <div class="flex items-center justify-between">
+                                    <button onclick="state.orderForm.copies=Math.max(1, state.orderForm.copies-1); render()" class="w-7 h-7 rounded-lg bg-white border border-slate-200 font-bold text-xs">-</button>
+                                    <span class="text-xs font-extrabold">${state.orderForm.copies}</span>
+                                    <button onclick="state.orderForm.copies+=1; render()" class="w-7 h-7 rounded-lg bg-white border border-slate-200 font-bold text-xs">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Color Mode -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="state.orderForm.colorMode='bw'; render()" class="p-2.5 rounded-2xl border text-left transition ${state.orderForm.colorMode === 'bw' ? 'border-blue-600 bg-blue-50/70' : 'border-slate-200'}">
+                                <div class="text-xs font-bold text-slate-900">Black & White</div>
+                                <div class="text-[11px] text-slate-500">RM${vendor.bwPrice.toFixed(2)} / sheet</div>
+                            </button>
+                            <button onclick="state.orderForm.colorMode='color'; render()" class="p-2.5 rounded-2xl border text-left transition ${state.orderForm.colorMode === 'color' ? 'border-blue-600 bg-blue-50/70' : 'border-slate-200'}">
+                                <div class="text-xs font-bold text-slate-900">Full Color</div>
+                                <div class="text-[11px] text-slate-500">RM${vendor.colorPrice.toFixed(2)} / sheet</div>
+                            </button>
+                        </div>
+
+                        <!-- Duplex & Staple Finishing -->
+                        <div class="space-y-2 pt-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-slate-800">Double-Sided (Duplex)</span>
+                                <button onclick="state.orderForm.doubleSided=!state.orderForm.doubleSided; render()" class="w-10 h-5 rounded-full transition p-0.5 ${state.orderForm.doubleSided ? 'bg-blue-600' : 'bg-slate-300'}">
+                                    <div class="w-4 h-4 rounded-full bg-white shadow transform transition ${state.orderForm.doubleSided ? 'translate-x-5' : 'translate-x-0'}"></div>
+                                </button>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-slate-800">Corner Staple & Folder (+RM0.50)</span>
+                                <button onclick="state.orderForm.stapleBind=!state.orderForm.stapleBind; render()" class="w-10 h-5 rounded-full transition p-0.5 ${state.orderForm.stapleBind ? 'bg-blue-600' : 'bg-slate-300'}">
+                                    <div class="w-4 h-4 rounded-full bg-white shadow transform transition ${state.orderForm.stapleBind ? 'translate-x-5' : 'translate-x-0'}"></div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Auto-Delete Privacy Toggle -->
+                        <div class="p-3 rounded-2xl bg-slate-900 text-white flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <i data-lucide="shield-alert" class="w-5 h-5 text-lime-300 shrink-0"></i>
+                                <div>
+                                    <div class="text-xs font-bold">Auto-Delete After Pick-Up</div>
+                                    <div class="text-[10px] text-slate-300">Wipes file from vendor app immediately</div>
+                                </div>
+                            </div>
+                            <button onclick="state.orderForm.autoDelete=!state.orderForm.autoDelete; render()" class="w-10 h-5 rounded-full transition p-0.5 shrink-0 ${state.orderForm.autoDelete ? 'bg-lime-400' : 'bg-slate-600'}">
+                                <div class="w-4 h-4 rounded-full bg-slate-900 shadow transform transition ${state.orderForm.autoDelete ? 'translate-x-5' : 'translate-x-0'}"></div>
+                            </button>
+                        </div>
+
+                        <button onclick="state.uploadStep=2; render()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm transition">
+                            Next: Choose Slot (Est. RM${pricing.total}) →
+                        </button>
+                    </div>
+                ` : state.uploadStep === 2 ? `
+                    <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3.5">
+                        <h3 class="font-extrabold text-sm text-slate-900">2. Book Slot & Pick-Up Point</h3>
+
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Student Vendor</label>
+                            <select onchange="selectVendorAndBook(parseInt(this.value)); state.uploadStep=2; render();" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs font-bold text-slate-800 bg-slate-50">
+                                ${state.vendors.map(v => `<option value="${v.id}" ${v.id === vendor.id ? 'selected' : ''}>${v.name} (${v.code}) — RM${v.bwPrice.toFixed(2)}/pg (${v.rating}★)</option>`).join('')}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1.5">Available 24/7 Slots</label>
+                            <div class="space-y-1.5">
+                                ${vendor.slots.map(s => `
+                                    <button onclick="state.orderForm.slot='${s}'; render()" class="w-full p-2.5 rounded-2xl border text-left text-xs font-semibold flex items-center justify-between transition ${state.orderForm.slot === s ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-700'}">
+                                        <span>${s}</span>
+                                        ${state.orderForm.slot === s ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-blue-600"></i>' : ''}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Flexible Pick-Up Location</label>
+                            <select onchange="state.orderForm.pickupPoint=this.value" class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-800 bg-slate-50">
+                                <option value="${vendor.college} Lobby">${vendor.college} Lobby</option>
+                                <option value="Hostel Room Doorstep (${vendor.code})">Hostel Room Doorstep (${vendor.code})</option>
+                                <option value="Neutral Point: Student Pavilion">Neutral Point: Student Pavilion</option>
+                                <option value="Neutral Point: UNIMAS Library Entrance">Neutral Point: UNIMAS Library Entrance</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-600 mb-1">Note to Vendor (Optional)</label>
+                            <input type="text" value="${state.orderForm.notes}" oninput="state.orderForm.notes=this.value" placeholder="e.g., Print slide 1-14 only, meet at ground floor..." class="w-full p-2.5 rounded-2xl border border-slate-200 text-xs bg-slate-50">
+                        </div>
+
+                        <div class="flex gap-2 pt-1">
+                            <button onclick="state.uploadStep=1; render()" class="px-4 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl">Back</button>
+                            <button onclick="state.uploadStep=3; render()" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm">
+                                Next: Escrow Pay (RM${pricing.total}) →
+                            </button>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3.5">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-extrabold text-sm text-slate-900">3. Escrow Checkout</h3>
+                            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md">100% Protected</span>
+                        </div>
+
+                        <!-- Payment Method Selector -->
+                        <div class="grid grid-cols-2 gap-2">
+                            ${['DuitNow QR', 'Campus E-Wallet'].map(method => `
+                                <button onclick="state.orderForm.paymentMethod='${method}'; render()" class="p-2.5 rounded-2xl border text-left transition ${state.orderForm.paymentMethod === method ? 'border-pink-500 bg-pink-50/60' : 'border-slate-200'}">
+                                    <div class="text-xs font-extrabold text-slate-900">${method}</div>
+                                    <div class="text-[10px] text-slate-500">${method === 'DuitNow QR' ? 'Instant Bank / TNG' : 'Bal: RM' + state.walletBalance.toFixed(2)}</div>
+                                </button>
+                            `).join('')}
+                        </div>
+
+                        <!-- Receipt Breakdown -->
+                        <div class="bg-slate-50 p-3 rounded-2xl space-y-1.5 text-xs border border-slate-100">
+                            <div class="flex justify-between text-slate-600">
+                                <span>Print (${pricing.effectiveSheets} sheets × ${state.orderForm.copies} × RM${pricing.rate.toFixed(2)})</span>
+                                <span class="font-semibold text-slate-800">RM${pricing.printCost}</span>
+                            </div>
+                            ${state.orderForm.stapleBind ? `
+                            <div class="flex justify-between text-slate-600">
+                                <span>Staple & Folder Finishing</span>
+                                <span class="font-semibold text-slate-800">RM${pricing.finishingCost}</span>
+                            </div>` : ''}
+                            <div class="flex justify-between text-slate-600">
+                                <span>Platform & Reprint Guarantee</span>
+                                <span class="font-semibold text-slate-800">RM${pricing.platformFee}</span>
+                            </div>
+                            <div class="border-t border-slate-200 pt-1.5 flex justify-between font-extrabold text-sm text-slate-900">
+                                <span>Total Held in Escrow</span>
+                                <span class="text-blue-600">RM${pricing.total}</span>
+                            </div>
+                        </div>
+
+                        <div class="p-3 rounded-2xl border border-pink-200 bg-pink-50/40 flex items-center gap-3">
+                            <div class="w-14 h-14 bg-white p-1.5 rounded-xl border border-pink-200 flex items-center justify-center shrink-0">
+                                <i data-lucide="qr-code" class="w-10 h-10 text-pink-600"></i>
+                            </div>
+                            <div class="text-[11px] text-slate-700 leading-snug">
+                                <p class="font-bold text-pink-700">Escrow Release After Pick-Up</p>
+                                Funds stay locked until you verify print quality and tap <strong>Confirm Pick-Up</strong>.
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button onclick="state.uploadStep=2; render()" class="px-4 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl">Back</button>
+                            <button onclick="submitOrder()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm flex items-center justify-center gap-1.5">
+                                <i data-lucide="shield-check" class="w-4 h-4"></i>
+                                Pay RM${pricing.total} & Print
+                            </button>
+                        </div>
+                    </div>
+                `}
+            `;
+        }
+
+        function renderStudentOrders() {
+            return `
+                <div class="flex items-center justify-between px-1">
+                    <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">My Print Orders (${state.orders.length})</h3>
+                    <span class="text-[11px] text-emerald-700 font-semibold flex items-center gap-1"><i data-lucide="shield" class="w-3 h-3"></i> Reprint Guarantee</span>
+                </div>
+
+                <div class="space-y-3">
+                    ${state.orders.map(order => `
+                        <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+                            <div class="flex justify-between items-start gap-2">
+                                <div class="overflow-hidden">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[10px] font-bold text-slate-400">${order.id}</span>
+                                        <span class="text-[10px] font-extrabold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">PIN #${order.pickupCode}</span>
+                                    </div>
+                                    <h4 class="text-sm font-extrabold text-slate-900 truncate">${order.fileName}</h4>
+                                    <p class="text-[11px] text-slate-500">Vendor: <span class="font-semibold text-slate-700">${order.vendorName}</span></p>
+                                </div>
+                                <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase shrink-0 ${
+                                    order.status === 'completed' ? 'bg-slate-100 text-slate-600' :
+                                    order.status === 'ready' ? 'bg-lime-200 text-slate-900' :
+                                    order.status === 'reprint_requested' ? 'bg-rose-100 text-rose-700' :
+                                    'bg-blue-100 text-blue-700'
+                                }">
+                                    ${order.status === 'paid_escrow' ? 'Escrow Paid' :
+                                      order.status === 'printing' ? 'Printing...' :
+                                      order.status === 'ready' ? 'Ready Now' :
+                                      order.status === 'reprint_requested' ? 'Reprint Active' : 'Completed'}
+                                </span>
+                            </div>
+
+                            <div class="bg-slate-50 p-2.5 rounded-2xl text-[11px] space-y-1 text-slate-600">
+                                <div class="flex justify-between"><span>Slot:</span><span class="font-semibold text-slate-800">${order.slot}</span></div>
+                                <div class="flex justify-between"><span>Pick-Up:</span><span class="font-semibold text-slate-800">${order.pickup}</span></div>
+                                <div class="flex justify-between"><span>Escrow Total:</span><span class="font-bold text-blue-600">RM${order.total.toFixed(2)}</span></div>
+                            </div>
+
+                            <!-- Privacy Auto-Delete Status -->
+                            <div class="flex items-center gap-2 text-[11px] px-3 py-2 rounded-xl ${order.fileDeleted ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}">
+                                <i data-lucide="${order.fileDeleted ? 'trash-2' : 'lock'}" class="w-3.5 h-3.5 shrink-0"></i>
+                                <span>
+                                    ${order.fileDeleted
+                                        ? 'Privacy Verified: Document auto-deleted from vendor device.'
+                                        : 'Document encrypted in-app. Auto-deletes upon pick-up.'}
+                                </span>
+                            </div>
+
+                            ${order.status !== 'completed' ? `
+                                <div class="flex gap-2">
+                                    <button onclick="openVendorChat(${order.vendorId})" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-2xl flex items-center gap-1">
+                                        <i data-lucide="message-circle" class="w-4 h-4"></i> Chat
+                                    </button>
+                                    <button onclick="openPickupVerificationModal('${order.id}')" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm transition flex items-center justify-center gap-1.5">
+                                        <i data-lucide="qr-code" class="w-4 h-4"></i> Verify Pick-Up
+                                    </button>
+                                </div>
+                            ` : `
+                                <div class="flex items-center justify-between pt-1">
+                                    <span class="text-[11px] text-slate-500">Escrow released ✓</span>
+                                    ${!order.rated ? `
+                                        <button onclick="openRatingModal('${order.id}')" class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl flex items-center gap-1">
+                                            <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-500 text-amber-500"></i> Rate Vendor
+                                        </button>
+                                    ` : `<span class="text-xs font-bold text-amber-600">Rated ${order.ratingGiven || 5}.0 ★</span>`}
+                                </div>
+                            `}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderStudentChat() {
+            const activeVendor = state.vendors.find(v => v.id === state.activeChatVendorId) || state.vendors[0];
+            const thread = state.chats[activeVendor.id] || [];
+
+            return `
+                <!-- Vendor Thread Switcher -->
+                <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                    ${state.vendors.map(v => `
+                        <button onclick="state.activeChatVendorId=${v.id}; render()" class="px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition flex items-center gap-1.5 ${state.activeChatVendorId === v.id ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-700'}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            ${v.name} (${v.code})
+                        </button>
+                    `).join('')}
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm flex flex-col h-[490px] overflow-hidden">
+                    <!-- Chat Header -->
+                    <div class="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">${activeVendor.name.slice(0,2).toUpperCase()}</div>
+                            <div>
+                                <div class="text-xs font-bold text-slate-900 flex items-center gap-1">
+                                    ${activeVendor.name} <i data-lucide="badge-check" class="w-3.5 h-3.5 text-blue-600"></i>
+                                </div>
+                                <div class="text-[10px] text-emerald-600 font-semibold">${activeVendor.college}</div>
+                            </div>
+                        </div>
+                        <button onclick="selectVendorAndBook(${activeVendor.id})" class="px-2.5 py-1 bg-blue-100 text-blue-700 text-[10px] font-extrabold rounded-lg">
+                            + Print Here
+                        </button>
+                    </div>
+
+                    <!-- Messages -->
+                    <div class="flex-1 p-3.5 overflow-y-auto space-y-2.5 bg-slate-50/40">
+                        ${thread.map(m => `
+                            <div class="flex flex-col ${m.sender === 'student' ? 'items-end' : 'items-start'}">
+                                <div class="max-w-[82%] px-3.5 py-2 rounded-2xl text-xs leading-relaxed ${
+                                    m.sender === 'student'
+                                        ? 'bg-blue-600 text-white rounded-br-sm'
+                                        : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
+                                }">
+                                    ${m.text}
+                                </div>
+                                <span class="text-[9px] text-slate-400 mt-0.5 px-1">${m.time}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <!-- Quick Replies -->
+                    <div class="px-2.5 pt-2 bg-white flex gap-1.5 overflow-x-auto no-scrollbar">
+                        ${['On my way down!', 'Can you staple it?', 'Meet at lobby?'].map(qr => `
+                            <button onclick="sendChatMessage('${qr}')" class="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-[10px] font-bold whitespace-nowrap transition">
+                                ${qr}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <!-- Input -->
+                    <div class="p-2.5 bg-white flex gap-2">
+                        <input id="chat-input" type="text" placeholder="Message ${activeVendor.name}..." onkeydown="if(event.key==='Enter') sendChatMessage()" class="flex-1 bg-slate-100 rounded-2xl px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button onclick="sendChatMessage()" class="w-9 h-9 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0">
+                            <i data-lucide="send" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- RENDER VENDOR VIEWS ---
+        function renderVendorDashboard() {
+            return `
+                <!-- Vendor Online Status Card -->
+                <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center gap-1.5 mb-0.5">
+                            <span class="px-2 py-0.5 bg-lime-200 text-slate-900 text-[10px] font-extrabold rounded-md">TOP VENDOR</span>
+                            <span class="text-[11px] font-semibold text-slate-500">4.9 ★ (42 jobs)</span>
+                        </div>
+                        <h3 class="text-sm font-extrabold text-slate-900">Late-Night Printing Desk</h3>
+                        <p class="text-[11px] text-slate-500">${state.vendorOnline ? 'Accepting student print jobs now' : 'Offline — slots paused'}</p>
+                    </div>
+                    <button onclick="toggleVendorOnline()" class="px-3.5 py-2 rounded-2xl font-bold text-xs transition ${state.vendorOnline ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-200 text-slate-700'}">
+                        ${state.vendorOnline ? 'ONLINE' : 'OFFLINE'}
+                    </button>
+                </div>
+
+                <!-- Earnings Summary -->
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div class="bg-slate-900 text-white p-3.5 rounded-2xl">
+                        <span class="text-[10px] text-slate-400 uppercase font-bold">Total Earned</span>
+                        <div class="text-lg font-extrabold text-lime-300 mt-0.5">RM${state.vendorEarnings.toFixed(2)}</div>
+                        <span class="text-[10px] text-slate-400">From spare printer capacity</span>
+                    </div>
+                    <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80">
+                        <span class="text-[10px] text-slate-400 uppercase font-bold">Active Queue</span>
+                        <div class="text-lg font-extrabold text-blue-600 mt-0.5">${state.orders.filter(o => o.status !== 'completed').length} Jobs</div>
+                        <span class="text-[10px] text-slate-500">Escrow secured</span>
+                    </div>
+                </div>
+
+                <!-- Incoming Print Jobs -->
+                <div>
+                    <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2 px-1">Student Print Queue</h4>
+                    <div class="space-y-2.5">
+                        ${state.orders.map(order => `
+                            <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <span class="text-[10px] font-bold text-blue-600">${order.studentName} • PIN #${order.pickupCode}</span>
+                                        <h5 class="text-xs font-extrabold text-slate-900">${order.fileName}</h5>
+                                        <p class="text-[11px] text-slate-500">${order.pages} pages • ${order.colorMode.toUpperCase()} • ${order.slot}</p>
+                                    </div>
+                                    <span class="text-xs font-extrabold text-emerald-700">+RM${(order.total - 0.20).toFixed(2)}</span>
+                                </div>
+
+                                ${order.status === 'reprint_requested' ? `
+                                    <div class="p-2 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-800 font-semibold">
+                                        Reprint Requested: ${order.reprintReason}
+                                    </div>
+                                ` : ''}
+
+                                <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                                    <span class="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                                        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600"></i>
+                                        ${order.fileDeleted ? 'Auto-deleted' : 'Encrypted viewer only'}
+                                    </span>
+
+                                    ${order.status === 'paid_escrow' || order.status === 'reprint_requested' ? `
+                                        <button onclick="advanceOrderStatus('${order.id}')" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-xl">Start Print</button>
+                                    ` : order.status === 'printing' ? `
+                                        <button onclick="advanceOrderStatus('${order.id}')" class="px-3 py-1.5 bg-pink-600 text-white text-xs font-bold rounded-xl">Mark Ready</button>
+                                    ` : order.status === 'ready' ? `
+                                        <span class="text-[11px] font-bold text-amber-600">Awaiting Student PIN</span>
+                                    ` : `
+                                        <span class="text-[11px] font-bold text-emerald-600">Escrow Released ✓</span>
+                                    `}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderVendorSlots() {
+            return `
+                <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+                    <div>
+                        <h3 class="text-sm font-extrabold text-slate-900">Manage 24/7 Availability Slots</h3>
+                        <p class="text-[11px] text-slate-500">Toggle slots when campus shops are closed.</p>
+                    </div>
+                    <div class="space-y-2">
+                        ${state.vendorSlots.map((slot, idx) => `
+                            <div class="p-3 rounded-2xl border ${slot.active ? 'border-blue-200 bg-blue-50/40' : 'border-slate-200'} flex items-center justify-between">
+                                <span class="text-xs font-bold text-slate-800">${slot.time}</span>
+                                <button onclick="toggleSlot(${idx})" class="w-11 h-6 rounded-full transition p-0.5 ${slot.active ? 'bg-blue-600' : 'bg-slate-300'}">
+                                    <div class="w-5 h-5 rounded-full bg-white shadow transform transition ${slot.active ? 'translate-x-5' : 'translate-x-0'}"></div>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2">
+                    <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Your Rates (RM0.15 – RM0.25/pg)</h4>
+                    <div class="flex justify-between text-xs py-1.5 border-b border-slate-100">
+                        <span class="text-slate-600">Black & White (A4 80gsm)</span>
+                        <span class="font-extrabold text-slate-900">RM0.15 / sheet</span>
+                    </div>
+                    <div class="flex justify-between text-xs py-1.5">
+                        <span class="text-slate-600">Full Color</span>
+                        <span class="font-extrabold text-slate-900">RM0.50 / sheet</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- MASTER RENDER ---
+        window.render = function() {
+            const content = document.getElementById('app-content');
+            const nav = document.getElementById('bottom-nav');
+
+            if (!state.isAuthenticated) {
+                content.innerHTML = renderAuthScreen();
+                lucide.createIcons();
+                return;
+            }
+
+            if (state.role === 'student') {
+                if (state.studentTab === 'home') content.innerHTML = renderStudentHome();
+                else if (state.studentTab === 'upload') content.innerHTML = renderStudentUpload();
+                else if (state.studentTab === 'orders') content.innerHTML = renderStudentOrders();
+                else if (state.studentTab === 'chat') content.innerHTML = renderStudentChat();
+
+                const activeCount = state.orders.filter(o => o.status !== 'completed').length;
+
+                nav.innerHTML = `
+                    <button onclick="setStudentTab('home')" class="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl ${state.studentTab === 'home' ? 'text-blue-600 bg-blue-50/70' : 'text-slate-400'}">
+                        <i data-lucide="compass" class="w-5 h-5"></i>
+                        <span class="text-[10px] font-bold">Nearby</span>
+                    </button>
+                    <button onclick="setStudentTab('upload')" class="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl ${state.studentTab === 'upload' ? 'text-blue-600 bg-blue-50/70' : 'text-slate-400'}">
+                        <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                        <span class="text-[10px] font-bold">Print</span>
+                    </button>
+                    <button onclick="setStudentTab('orders')" class="relative flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl ${state.studentTab === 'orders' ? 'text-blue-600 bg-blue-50/70' : 'text-slate-400'}">
+                        <i data-lucide="file-check" class="w-5 h-5"></i>
+                        <span class="text-[10px] font-bold">Orders</span>
+                        ${activeCount > 0 ? `<span class="absolute top-0.5 right-2 w-4 h-4 rounded-full bg-pink-500 text-white text-[9px] font-extrabold flex items-center justify-center">${activeCount}</span>` : ''}
+                    </button>
+                    <button onclick="setStudentTab('chat')" class="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl ${state.studentTab === 'chat' ? 'text-blue-600 bg-blue-50/70' : 'text-slate-400'}">
+                        <i data-lucide="message-square" class="w-5 h-5"></i>
+                        <span class="text-[10px] font-bold">Chat</span>
+                    </button>
+                `;
+            } else {
+                if (state.vendorTab === 'dashboard') content.innerHTML = renderVendorDashboard();
+                else if (state.vendorTab === 'slots') content.innerHTML = renderVendorSlots();
+
+                nav.innerHTML = `
+                    <button onclick="setVendorTab('dashboard')" class="flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl ${state.vendorTab === 'dashboard' ? 'text-pink-600 bg-pink-50' : 'text-slate-400'}">
+                        <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                        <span class="text-[10px] font-bold">Print Queue</span>
+                    </button>
+                    <button onclick="setVendorTab('slots')" class="flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl ${state.vendorTab === 'slots' ? 'text-pink-600 bg-pink-50' : 'text-slate-400'}">
+                        <i data-lucide="calendar-clock" class="w-5 h-5"></i>
+                        <span class="text-[10px] font-bold">24/7 Slots</span>
+                    </button>
+                `;
+            }
+
+            if (state.showTutorial) {
+                renderTutorial();
+            }
+
+            lucide.createIcons();
+        };
+
+        window.onload = function() {
+            updateChromeVisibility();
+            window.render();
+        };
+    </script>
 </body>
 </html>
