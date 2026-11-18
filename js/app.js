@@ -324,102 +324,6 @@ function setVendorTab(tab) {
     render();
 }
 
-function toggleDeviceMode() {
-    sounds.pop();
-    state.deviceMode = state.deviceMode === 'mobile' ? 'fullscreen' : 'mobile';
-    saveState();
-    applyDeviceMode();
-}
-
-function applyDeviceMode() {
-    const frame = document.getElementById('device-frame');
-    const toggleBtnText = document.getElementById('device-toggle-text');
-    if (!frame) return;
-
-    if (state.deviceMode === 'fullscreen') {
-        frame.className = 'w-full max-w-4xl h-[92vh] max-h-[850px] min-h-[660px] bg-white rounded-3xl shadow-2xl border-[6px] border-slate-900 overflow-hidden flex flex-col relative transition-all duration-300';
-        if (toggleBtnText) toggleBtnText.textContent = 'Switch to Phone Mockup';
-    } else {
-        frame.className = 'w-full max-w-[430px] h-[92vh] max-h-[850px] min-h-[660px] bg-white rounded-[44px] shadow-2xl border-[8px] border-slate-900 overflow-hidden flex flex-col relative transition-all duration-300';
-        if (toggleBtnText) toggleBtnText.textContent = 'Expand to Tablet / Full View';
-    }
-}
-
-// --- BUSINESS MODEL CANVAS MODAL ---
-function openBMCModal() {
-    sounds.pop();
-    openModal(`
-        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
-                <h3 class="text-base font-extrabold text-slate-900">Business Model Canvas (2026)</h3>
-            </div>
-            <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
-        </div>
-
-        <div class="space-y-3 pt-1">
-            <div class="rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900">
-                <img src="assets/bmc-printswift.jpg" alt="PrintSwift Business Model Canvas" class="w-full h-auto object-contain cursor-pointer hover:opacity-95 transition" onclick="window.open('assets/bmc-printswift.jpg', '_blank')" title="Click to view full image in new tab">
-            </div>
-            <p class="text-[11px] text-slate-500 italic text-center">Class Activity: PrintSwift Peer-to-Peer Student Printing Model (UNIMAS 2026)</p>
-
-            <!-- 9 Building Blocks Quick Nav -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div class="p-3 rounded-2xl bg-lime-50/80 border border-lime-200">
-                    <h5 class="font-extrabold text-slate-900 flex items-center gap-1.5 mb-1">
-                        <i data-lucide="sparkles" class="w-4 h-4 text-lime-600"></i> Value Propositions
-                    </h5>
-                    <ul class="text-[11px] text-slate-700 space-y-1 list-disc pl-3">
-                        <li>Print at any hour, including late night and public holidays.</li>
-                        <li>Booked time slots instead of waiting in shop queues.</li>
-                        <li>Files stay in app (auto-delete vault) & verified student vendors.</li>
-                        <li>Pickup at hostel room, block lobby, or campus neutral point.</li>
-                        <li>Escrow protection: funds held and released after pickup.</li>
-                    </ul>
-                </div>
-
-                <div class="p-3 rounded-2xl bg-blue-50/80 border border-blue-200">
-                    <h5 class="font-extrabold text-slate-900 flex items-center gap-1.5 mb-1">
-                        <i data-lucide="users" class="w-4 h-4 text-blue-600"></i> Customer Segments
-                    </h5>
-                    <ul class="text-[11px] text-slate-700 space-y-1 list-disc pl-3">
-                        <li>Students printing assignments, lab reports, exam notes.</li>
-                        <li>Hostel residents needing emergency late-night printing.</li>
-                        <li>Students with idle dorm printers seeking passive income.</li>
-                    </ul>
-                </div>
-
-                <div class="p-3 rounded-2xl bg-amber-50/80 border border-amber-200">
-                    <h5 class="font-extrabold text-slate-900 flex items-center gap-1.5 mb-1">
-                        <i data-lucide="coins" class="w-4 h-4 text-amber-600"></i> Revenue Streams
-                    </h5>
-                    <ul class="text-[11px] text-slate-700 space-y-1 list-disc pl-3">
-                        <li>RM0.20 platform fee on completed print jobs.</li>
-                        <li>Vendor subscription for priority listing & badge.</li>
-                        <li>Vendors set per-page rates (RM0.15 - RM0.25/pg B&W).</li>
-                        <li>3 of 5 interviewed students willing to pay RM0.05 more/pg for late-night speed.</li>
-                    </ul>
-                </div>
-
-                <div class="p-3 rounded-2xl bg-pink-50/80 border border-pink-200">
-                    <h5 class="font-extrabold text-slate-900 flex items-center gap-1.5 mb-1">
-                        <i data-lucide="shield-check" class="w-4 h-4 text-pink-600"></i> Customer Relationships
-                    </h5>
-                    <ul class="text-[11px] text-slate-700 space-y-1 list-disc pl-3">
-                        <li>In-app direct chat with the assigned student vendor.</li>
-                        <li>Two-way ratings and Top Vendor verified badges.</li>
-                        <li>PrintSwift Reprint Guarantee against smudges or errors.</li>
-                    </ul>
-                </div>
-            </div>
-
-            <button onclick="closeModal()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-2xl transition">
-                Return to Interactive Prototype
-            </button>
-        </div>
-    `);
-}
-
 // --- INTERACTIVE MODALS (Vendor Profile, QR Pickup, Reprint, Wallet, Profile) ---
 function openVendorProfile(vendorId) {
     sounds.pop();
@@ -899,10 +803,10 @@ function renderStudentHome() {
             <p class="text-[11px] text-slate-300 mt-0.5 mb-3 relative z-10">Book a dorm slot, hold in escrow, and auto-delete after pickup.</p>
             <div class="flex gap-2 relative z-10">
                 <button onclick="setStudentTab('upload')" class="flex-1 py-2.5 px-3 bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs rounded-2xl shadow-md transition flex items-center justify-center gap-1.5 active:scale-95">
-                    <i data-lucide="upload-cloud" class="w-4 h-4"></i> Quick Print Now
+                    <i data-lucide="upload-cloud" class="w-4 h-4"></i> Quick Print
                 </button>
-                <button onclick="openBMCModal()" class="px-3 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl transition flex items-center gap-1.5 active:scale-95">
-                    <i data-lucide="layers" class="w-4 h-4 text-lime-300"></i> BMC 2026
+                <button onclick="setStudentTab('orders')" class="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl transition flex items-center gap-1.5 active:scale-95">
+                    <i data-lucide="clock" class="w-4 h-4 text-lime-300"></i> Track (${state.orders.length})
                 </button>
             </div>
         </div>
@@ -1538,6 +1442,5 @@ function render() {
 
 // Window initialization
 window.addEventListener('DOMContentLoaded', () => {
-    applyDeviceMode();
     render();
 });
