@@ -1160,6 +1160,294 @@
             render();
         }
 
+        // --- RESPONSIVE DOCUMENT PREVIEW SYSTEM (FOR STUDENT & VENDOR) ---
+        state.docPreviewPage = 1;
+        state.docPreviewColor = null;
+
+        function getDocumentTitle(fileName) {
+            return (fileName || 'Document.pdf').replace(/\.pdf$/i, '').replace(/_/g, ' ');
+        }
+
+        function renderDocumentPageHTML(docObj, pageNum = 1, forceColorMode = null) {
+            const isBw = (forceColorMode !== null ? forceColorMode : (docObj.colorMode || 'bw')) === 'bw';
+            const totalPages = docObj.pages || 6;
+            const safePage = Math.max(1, Math.min(totalPages, pageNum));
+            const fileName = docObj.fileName || 'TMC2013_Group18_FinalReport.pdf';
+            const docTitle = getDocumentTitle(fileName);
+            const studentName = docObj.studentName || `${state.currentUser?.name || 'Calvin Joseph Param'} (${state.currentUser?.matric || '98387'})`;
+
+            // If real image preview exists (e.g. uploaded screenshot / photo)
+            if (docObj.previewUrl) {
+                return `
+                    <div class="relative w-full aspect-[1/1.414] bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden flex flex-col justify-between p-3 select-none ${isBw ? 'filter grayscale contrast-125' : ''}">
+                        <div class="flex items-center justify-between text-[9px] text-slate-500 font-bold border-b border-slate-100 pb-1.5">
+                            <span class="truncate max-w-[180px]">${fileName}</span>
+                            <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">Uploaded File</span>
+                        </div>
+                        <div class="flex-1 my-2 flex items-center justify-center overflow-hidden rounded-lg bg-slate-50">
+                            <img src="${docObj.previewUrl}" alt="Preview" class="max-w-full max-h-full object-contain">
+                        </div>
+                        <div class="flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-100 pt-1.5">
+                            <span>UNIMAS Student Print</span>
+                            <span>Page ${safePage} of ${totalPages}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // High-fidelity structured A4 academic document
+            let bodyHTML = '';
+
+            if (safePage === 1) {
+                // PAGE 1: Formal University Coursework Cover Page
+                bodyHTML = `
+                    <div class="space-y-3.5 my-auto text-center py-2">
+                        <!-- Faculty Emblem Header -->
+                        <div class="space-y-1">
+                            <div class="w-10 h-10 mx-auto rounded-full bg-blue-700 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                                <span>U</span>
+                            </div>
+                            <h4 class="text-[10px] font-black uppercase tracking-wider text-slate-900">Universiti Malaysia Sarawak</h4>
+                            <p class="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Faculty of Computer Science & Information Technology</p>
+                        </div>
+
+                        <div class="w-16 h-0.5 bg-blue-600 mx-auto rounded-full"></div>
+
+                        <!-- Title Block -->
+                        <div class="space-y-1.5 px-2">
+                            <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${isBw ? 'bg-slate-200 text-slate-800' : 'bg-pink-100 text-pink-700'} tracking-wide">
+                                Coursework Report • Sem 1 2025/2026
+                            </span>
+                            <h3 class="text-xs sm:text-sm font-black text-slate-900 leading-snug uppercase tracking-tight">
+                                ${docTitle}
+                            </h3>
+                            <p class="text-[9px] text-slate-500 font-medium">TMC2013 Data Structures & Algorithm Design Analysis</p>
+                        </div>
+
+                        <!-- Student Submission Card -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-left text-[9px] space-y-1 max-w-[240px] mx-auto">
+                            <div class="flex justify-between"><span class="text-slate-500">Prepared by:</span><span class="font-bold text-slate-900">${studentName}</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Lecturer:</span><span class="font-bold text-slate-900">Dr. Norhaslinda K.</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Submission Date:</span><span class="font-bold text-slate-900">November 2026</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Format:</span><span class="font-bold text-blue-700">A4 • 80gsm • ${isBw ? 'B&W Toner' : 'Full Color'}</span></div>
+                        </div>
+
+                        <!-- Abstract snippet -->
+                        <div class="text-left px-3 text-[8px] text-slate-500 leading-relaxed border-t border-slate-100 pt-2 line-clamp-3">
+                            <strong>Abstract:</strong> This project explores distributed queueing architectures in peer-to-peer campus infrastructure. Real-time slot allocation ensures deterministic turnaround times during high-volume late-night assignment submissions.
+                        </div>
+                    </div>
+                `;
+            } else if (safePage === 2) {
+                // PAGE 2: Literature Review & Benchmarking Table
+                bodyHTML = `
+                    <div class="space-y-2.5 text-left py-1 text-[9px]">
+                        <div class="border-b border-slate-200 pb-1">
+                            <span class="text-[8px] font-bold text-blue-600 uppercase">Section 1.0</span>
+                            <h4 class="text-[11px] font-black text-slate-900">1.0 Performance Benchmarks & Methodology</h4>
+                        </div>
+
+                        <p class="text-[8px] text-slate-600 leading-relaxed">
+                            Experimental latency results were measured across three residential cluster gateways (Kolej Bunga Raya, Allamanda, and Sakura). Jobs submitted between 23:00 and 01:00 achieved zero queue waiting time through pre-allocated print slots.
+                        </p>
+
+                        <!-- Academic Table -->
+                        <div class="rounded-lg border border-slate-200 overflow-hidden text-[8px]">
+                            <div class="bg-slate-100 font-extrabold text-slate-700 grid grid-cols-3 p-1.5 border-b border-slate-200">
+                                <span>Metric Node</span>
+                                <span>Campus Shop</span>
+                                <span>PrintSwift P2P</span>
+                            </div>
+                            <div class="grid grid-cols-3 p-1.5 border-b border-slate-100 text-slate-600 bg-white">
+                                <span class="font-semibold text-slate-800">Queue Wait Time</span>
+                                <span>25 - 40 mins</span>
+                                <span class="font-bold text-emerald-700">< 2 mins</span>
+                            </div>
+                            <div class="grid grid-cols-3 p-1.5 border-b border-slate-100 text-slate-600 bg-slate-50/50">
+                                <span class="font-semibold text-slate-800">Night Availability</span>
+                                <span>Closed (18:00)</span>
+                                <span class="font-bold text-emerald-700">24/7 Hostel</span>
+                            </div>
+                            <div class="grid grid-cols-3 p-1.5 text-slate-600 bg-white">
+                                <span class="font-semibold text-slate-800">File Auto-Delete</span>
+                                <span>Remains on PC</span>
+                                <span class="font-bold text-emerald-700">100% Wiped</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-lg bg-blue-50/60 border border-blue-100 text-[8px] text-slate-700">
+                            <strong>Note:</strong> Escrow guarantees that vendor payment is automatically frozen until student scans pick-up QR.
+                        </div>
+                    </div>
+                `;
+            } else {
+                // PAGE 3+: System Schematic Diagram & Code Implementation
+                bodyHTML = `
+                    <div class="space-y-2 text-left py-1 text-[9px]">
+                        <div class="border-b border-slate-200 pb-1">
+                            <span class="text-[8px] font-bold text-blue-600 uppercase">Section 2.0</span>
+                            <h4 class="text-[11px] font-black text-slate-900">2.0 Architecture Flow & Logic Circuit</h4>
+                        </div>
+
+                        <!-- Technical Diagram -->
+                        <div class="w-full h-28 bg-slate-900 rounded-xl p-2 flex flex-col justify-between text-white relative overflow-hidden shadow-inner">
+                            <div class="flex justify-between text-[7px] text-slate-400 font-mono">
+                                <span>UNIMAS_P2P_ARCHITECTURE.SCH</span>
+                                <span>ESCROW_VERIFIER_V2.1</span>
+                            </div>
+                            
+                            <div class="flex items-center justify-around my-auto">
+                                <div class="px-2 py-1.5 rounded-lg bg-blue-600 text-white font-extrabold text-[8px] text-center border border-blue-400 shadow-sm">
+                                    Student App<br><span class="text-[6px] font-normal text-blue-200">Upload PDF</span>
+                                </div>
+                                <div class="text-lime-300 font-mono text-[9px]">──►</div>
+                                <div class="px-2 py-1.5 rounded-lg bg-purple-600 text-white font-extrabold text-[8px] text-center border border-purple-400 shadow-sm">
+                                    Escrow Vault<br><span class="text-[6px] font-normal text-purple-200">DuitNow Hold</span>
+                                </div>
+                                <div class="text-lime-300 font-mono text-[9px]">──►</div>
+                                <div class="px-2 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-[8px] text-center border border-emerald-400 shadow-sm">
+                                    Vendor PIXMA<br><span class="text-[6px] font-normal text-emerald-200">Auto-Delete</span>
+                                </div>
+                            </div>
+
+                            <div class="text-[7px] text-lime-400 font-mono flex justify-between">
+                                <span>STATE: SECURE_SANDBOX</span>
+                                <span>HASH: 8F2A-99B1</span>
+                            </div>
+                        </div>
+
+                        <!-- Code block -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 font-mono text-[7px] text-slate-800 space-y-0.5">
+                            <div class="text-slate-400">// Verify student PIN before releasing escrow</div>
+                            <div><span class="text-blue-600 font-bold">async function</span> verifyHandover(pin, orderId) {</div>
+                            <div class="pl-2">const valid = await vault.validate(pin, orderId);</div>
+                            <div class="pl-2">if (valid) await fileStorage.permanentShred();</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="relative w-full aspect-[1/1.414] bg-white rounded-2xl shadow-lg border border-slate-300 p-4 sm:p-5 flex flex-col justify-between select-none overflow-hidden transition-all duration-300 ${isBw ? 'filter grayscale contrast-125' : ''}">
+                    <!-- Page Header Bar -->
+                    <div class="flex items-center justify-between text-[8px] text-slate-400 font-bold border-b border-slate-100 pb-1.5 shrink-0">
+                        <span class="flex items-center gap-1 text-slate-700 truncate max-w-[200px]">
+                            <span class="w-1.5 h-1.5 rounded-full ${isBw ? 'bg-slate-700' : 'bg-blue-600'}"></span>
+                            ${fileName}
+                        </span>
+                        <span class="uppercase tracking-widest text-[7px] text-slate-400 font-mono">UNIMAS PRINT</span>
+                    </div>
+
+                    <!-- Main Dynamic Page Body -->
+                    <div class="flex-1 flex flex-col justify-center overflow-hidden my-1">
+                        ${bodyHTML}
+                    </div>
+
+                    <!-- Page Footer Bar -->
+                    <div class="flex items-center justify-between text-[8px] text-slate-400 border-t border-slate-100 pt-1.5 shrink-0">
+                        <span class="flex items-center gap-1 font-semibold text-slate-500">
+                            <i data-lucide="shield-check" class="w-3 h-3 text-emerald-600"></i> Encrypted Sandbox
+                        </span>
+                        <span class="font-bold text-slate-700 font-mono">Page ${safePage} of ${totalPages}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openDocumentPreviewModal(orderIdOrSource = 'upload', page = 1) {
+            let docObj = null;
+            let isOrder = false;
+
+            if (orderIdOrSource === 'upload' || !orderIdOrSource) {
+                docObj = state.orderForm;
+            } else {
+                docObj = state.orders.find(o => o.id === orderIdOrSource) || state.orderForm;
+                isOrder = true;
+            }
+
+            state.docPreviewPage = page;
+            const totalPages = docObj.pages || 6;
+            const isVendor = state.role === 'vendor';
+            const currentColor = state.docPreviewColor || docObj.colorMode || 'bw';
+
+            openModal(`
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <div class="w-8 h-8 rounded-xl ${currentColor === 'bw' ? 'bg-slate-200 text-slate-700' : 'bg-blue-100 text-blue-700'} flex items-center justify-center font-bold shrink-0">
+                            <i data-lucide="file-text" class="w-4 h-4"></i>
+                        </div>
+                        <div class="truncate">
+                            <h3 class="text-xs font-black text-slate-900 truncate">${docObj.fileName}</h3>
+                            <p class="text-[10px] text-slate-500">${totalPages} pages • ${currentColor === 'bw' ? 'Black & White' : 'Full Color'} • ${docObj.doubleSided ? 'Duplex' : '1-Sided'}</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <!-- Preview Controls: Page Pagination & Color Mode Toggle -->
+                <div class="flex items-center justify-between bg-slate-100 p-1.5 rounded-2xl text-xs">
+                    <div class="flex items-center gap-1">
+                        <button onclick="changeDocPreviewPage(-1, '${orderIdOrSource}')" class="w-7 h-7 rounded-xl bg-white text-slate-700 font-bold flex items-center justify-center shadow-2xs hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none" ${state.docPreviewPage <= 1 ? 'disabled' : ''}>
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <span class="text-[11px] font-extrabold text-slate-800 px-1 font-mono">
+                            Page ${state.docPreviewPage} / ${totalPages}
+                        </span>
+                        <button onclick="changeDocPreviewPage(1, '${orderIdOrSource}')" class="w-7 h-7 rounded-xl bg-white text-slate-700 font-bold flex items-center justify-center shadow-2xs hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none" ${state.docPreviewPage >= totalPages ? 'disabled' : ''}>
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+
+                    <!-- Mode Toggle -->
+                    <div class="flex items-center bg-white p-0.5 rounded-xl border border-slate-200 text-[10px] font-bold">
+                        <button onclick="toggleDocPreviewColor('bw', '${orderIdOrSource}')" class="px-2 py-1 rounded-lg transition ${currentColor === 'bw' ? 'bg-slate-900 text-white' : 'text-slate-500'}">
+                            B&W
+                        </button>
+                        <button onclick="toggleDocPreviewColor('color', '${orderIdOrSource}')" class="px-2 py-1 rounded-lg transition ${currentColor === 'color' ? 'bg-blue-600 text-white' : 'text-slate-500'}">
+                            Color
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Responsive Document Page Sheet View -->
+                <div class="max-w-[340px] mx-auto w-full my-1">
+                    ${renderDocumentPageHTML(docObj, state.docPreviewPage, currentColor)}
+                </div>
+
+                <!-- Action Footer based on Role -->
+                <div class="space-y-2 pt-1">
+                    ${isVendor && isOrder ? `
+                        <div class="flex gap-2">
+                            <button onclick="closeModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">
+                                Close
+                            </button>
+                            <button onclick="closeModal(); advanceOrderStatus('${docObj.id}');" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5">
+                                <i data-lucide="printer" class="w-4 h-4"></i>
+                                <span>Print on Canon PIXMA (+RM${(docObj.total - 0.20).toFixed(2)})</span>
+                            </button>
+                        </div>
+                    ` : `
+                        <div class="flex gap-2">
+                            <button onclick="closeModal()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition">
+                                Close Preview
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `);
+        }
+
+        function changeDocPreviewPage(delta, source) {
+            state.docPreviewPage = Math.max(1, (state.docPreviewPage || 1) + delta);
+            openDocumentPreviewModal(source, state.docPreviewPage);
+        }
+
+        function toggleDocPreviewColor(mode, source) {
+            state.docPreviewColor = mode;
+            openDocumentPreviewModal(source, state.docPreviewPage || 1);
+        }
+
         // --- INTERACTIVE MODALS ---
         function openVendorProfile(vendorId) {
             const v = state.vendors.find(x => x.id === vendorId);
@@ -1901,6 +2189,18 @@
             state.orderForm.fileName = file.name;
             state.orderForm.fileSize = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
             state.orderForm.pages = estimatedPages;
+
+            if (file.type && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    state.orderForm.previewUrl = e.target.result;
+                    render();
+                };
+                reader.readAsDataURL(file);
+            } else {
+                state.orderForm.previewUrl = null;
+            }
+
             showNotification(`Uploaded "${file.name}" (${estimatedPages} pages detected)`);
             render();
         }
@@ -1917,6 +2217,7 @@
             state.orderForm.fileName = next.name;
             state.orderForm.fileSize = next.size;
             state.orderForm.pages = next.pages;
+            state.orderForm.previewUrl = null;
             showNotification(`Loaded sample "${next.name}" (${next.pages} pages)`);
             render();
         }
@@ -2043,6 +2344,7 @@
                 fileDeleted: false,
                 rated: false,
                 reprintReason: '',
+                previewUrl: state.orderForm.previewUrl || null,
                 createdAt: Date.now()
             };
 
@@ -2791,6 +3093,48 @@
                             </button>
                         </div>
 
+                        <!-- Live Interactive Document Preview (Student View) -->
+                        <div class="p-3 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                                    <i data-lucide="eye" class="w-3.5 h-3.5 text-blue-600"></i>
+                                    Document Print Preview
+                                </span>
+                                <button type="button" onclick="openDocumentPreviewModal('upload')" class="text-[10px] font-extrabold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-200 shadow-xs transition active:scale-95">
+                                    <i data-lucide="maximize-2" class="w-3 h-3"></i> Full Screen
+                                </button>
+                            </div>
+                            
+                            <!-- Mini A4 Preview Sheet -->
+                            <div onclick="openDocumentPreviewModal('upload')" class="cursor-pointer group relative bg-white border border-slate-200 rounded-xl p-2.5 shadow-xs hover:border-blue-400 transition">
+                                <div class="w-full aspect-[1/0.65] overflow-hidden rounded-lg bg-slate-100 flex flex-col justify-between p-2.5 relative select-none ${state.orderForm.colorMode === 'bw' ? 'filter grayscale contrast-125' : ''}">
+                                    ${state.orderForm.previewUrl ? `
+                                        <img src="${state.orderForm.previewUrl}" alt="Preview" class="w-full h-full object-contain">
+                                    ` : `
+                                        <div class="flex items-start justify-between border-b border-slate-200 pb-1 text-[8px]">
+                                            <div class="font-extrabold text-slate-800">UNIVERSITI MALAYSIA SARAWAK</div>
+                                            <span class="text-blue-600 font-bold">A4 • Page 1</span>
+                                        </div>
+                                        <div class="my-auto py-1 text-center">
+                                            <div class="text-[10px] font-black text-slate-800 truncate">${getDocumentTitle(state.orderForm.fileName)}</div>
+                                            <div class="text-[7.5px] text-slate-500 mt-0.5">Faculty of Computer Science & IT • ${state.orderForm.pages} Pages</div>
+                                            <div class="inline-block mt-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[7px] font-extrabold">
+                                                ${state.orderForm.colorMode === 'bw' ? 'Monochrome Black & White' : 'CMYK Full Color'} • ${state.orderForm.doubleSided ? 'Duplex' : 'Single'}
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-between text-[7px] text-slate-400 border-t border-slate-200 pt-1">
+                                            <span>Student: ${state.currentUser?.name || 'Calvin Joseph'}</span>
+                                            <span class="font-bold text-blue-600 group-hover:underline">Tap to Inspect File →</span>
+                                        </div>
+                                    `}
+                                </div>
+                                <div class="mt-1.5 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                                    <span class="truncate max-w-[200px] font-bold text-slate-700">${state.orderForm.fileName}</span>
+                                    <span class="text-[9px] bg-slate-200/80 text-slate-700 font-bold px-1.5 py-0.5 rounded">${state.orderForm.pages} Pgs</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <button onclick="state.uploadStep=2; render()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm transition">
                             Next: Choose Slot (Est. RM${pricing.total}) →
                         </button>
@@ -2936,6 +3280,32 @@
                                 <div class="flex justify-between"><span>Slot:</span><span class="font-semibold text-slate-800">${order.slot}</span></div>
                                 <div class="flex justify-between"><span>Pick-Up:</span><span class="font-semibold text-slate-800">${order.pickup}</span></div>
                                 <div class="flex justify-between"><span>Escrow Total:</span><span class="font-bold text-blue-600">RM${order.total.toFixed(2)}</span></div>
+                            </div>
+
+                            <!-- Document File Preview Thumbnail & Button (Student View) -->
+                            <div class="p-2.5 rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center justify-between gap-2.5">
+                                <div onclick="openDocumentPreviewModal('${order.id}')" class="flex items-center gap-2.5 min-w-0 cursor-pointer group">
+                                    <div class="w-10 h-12 rounded-lg bg-white border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between p-1 shrink-0 ${order.colorMode === 'bw' ? 'filter grayscale contrast-125' : ''}">
+                                        ${order.previewUrl ? `
+                                            <img src="${order.previewUrl}" alt="Doc" class="w-full h-full object-contain">
+                                        ` : `
+                                            <div class="w-full h-1.5 bg-blue-600 rounded-2xs"></div>
+                                            <div class="space-y-0.5">
+                                                <div class="w-full h-0.5 bg-slate-300"></div>
+                                                <div class="w-3/4 h-0.5 bg-slate-200"></div>
+                                                <div class="w-1/2 h-0.5 bg-slate-200"></div>
+                                            </div>
+                                            <div class="text-[6px] font-bold text-slate-400 text-center">PDF</div>
+                                        `}
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="text-[11px] font-bold text-slate-800 truncate group-hover:text-blue-600 transition">${order.fileName}</div>
+                                        <div class="text-[10px] text-slate-500">${order.pages} Pages • ${order.colorMode === 'bw' ? 'B&W Toner' : 'Full Color'} • ${order.doubleSided ? 'Duplex' : 'Single'}</div>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="openDocumentPreviewModal('${order.id}')" class="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shrink-0 shadow-xs transition active:scale-95">
+                                    <i data-lucide="eye" class="w-3.5 h-3.5"></i> Preview
+                                </button>
                             </div>
 
                             <!-- Privacy Auto-Delete Status -->
@@ -3108,6 +3478,36 @@
                                         <p class="text-[11px] text-slate-500">${order.pages} pages • ${order.colorMode.toUpperCase()} • ${order.slot}</p>
                                     </div>
                                     <span class="text-xs font-extrabold text-emerald-700">+RM${(order.total - 0.20).toFixed(2)}</span>
+                                </div>
+
+                                <!-- Document Preview Card for Vendor -->
+                                <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/90 flex items-center justify-between gap-2.5">
+                                    <div onclick="openDocumentPreviewModal('${order.id}')" class="flex items-center gap-2.5 min-w-0 cursor-pointer group">
+                                        <div class="w-10 h-12 rounded-lg bg-white border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between p-1 shrink-0 ${order.colorMode === 'bw' ? 'filter grayscale contrast-125' : ''}">
+                                            ${order.previewUrl ? `
+                                                <img src="${order.previewUrl}" alt="Doc" class="w-full h-full object-contain">
+                                            ` : `
+                                                <div class="w-full h-1.5 bg-blue-600 rounded-2xs"></div>
+                                                <div class="space-y-0.5">
+                                                    <div class="w-full h-0.5 bg-slate-300"></div>
+                                                    <div class="w-3/4 h-0.5 bg-slate-200"></div>
+                                                    <div class="w-1/2 h-0.5 bg-slate-200"></div>
+                                                </div>
+                                                <div class="text-[6px] font-bold text-slate-400 text-center">A4</div>
+                                            `}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <div class="text-[11px] font-bold text-slate-800 truncate group-hover:text-blue-600 transition">${order.fileName}</div>
+                                            <div class="text-[10px] text-slate-500 flex items-center gap-1.5">
+                                                <span class="font-semibold text-slate-700">${order.pages} Pgs</span> •
+                                                <span class="${order.colorMode === 'bw' ? 'text-slate-600 font-medium' : 'text-pink-600 font-bold'}">${order.colorMode === 'bw' ? 'B&W Grayscale' : 'Full Color CMYK'}</span> •
+                                                <span>${order.doubleSided ? 'Duplex' : 'Single'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="openDocumentPreviewModal('${order.id}')" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-lime-300 text-[11px] font-bold flex items-center gap-1 shrink-0 shadow-xs transition active:scale-95">
+                                        <i data-lucide="eye" class="w-3.5 h-3.5"></i> Inspect File
+                                    </button>
                                 </div>
 
                                 ${order.status === 'reprint_requested' ? `
