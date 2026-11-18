@@ -16,6 +16,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <!-- jsQR (Universal Camera & Image QR Code Scanner) -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <!-- MQTT.js for Real-Time Cross-Device Peer Sync -->
+    <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -235,6 +237,143 @@
     </script>
 
     <script>
+        // --- REAL-TIME PEER AUTO-SYNC ENGINE (CROSS-DEVICE & CROSS-TAB) ---
+        const REALTIME_TOPIC = 'unimas/printswift/sync/pilot2026';
+        let syncMqttClient = null;
+        let syncBroadcastChannel = null;
+        window.activePickupOrderId = null;
+        window.pickupAutoSyncChecker = null;
+
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                syncBroadcastChannel = new BroadcastChannel('printswift_sync_channel');
+                syncBroadcastChannel.onmessage = (event) => {
+                    if (event && event.data) handleIncomingSyncEvent(event.data);
+                };
+            } catch(e) {}
+        }
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'printswift_sync_event' && e.newValue) {
+                try {
+                    handleIncomingSyncEvent(JSON.parse(e.newValue));
+                } catch(err) {}
+            }
+        });
+
+        function initRealtimeSync() {
+            try {
+                if (typeof mqtt !== 'undefined' && mqtt.connect) {
+                    const clientId = 'ps_' + Math.random().toString(16).substr(2, 8);
+                    syncMqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+                        clientId: clientId,
+                        clean: true,
+                        keepalive: 30,
+                        connectTimeout: 5000,
+                        reconnectPeriod: 3000
+                    });
+
+                    syncMqttClient.on('connect', () => {
+                        console.log('Real-Time Peer Auto-Sync Connected (MQTT WebSockets)');
+                        syncMqttClient.subscribe(REALTIME_TOPIC);
+                        updateSyncBadge(true);
+                    });
+
+                    syncMqttClient.on('message', (topic, payload) => {
+                        try {
+                            const data = JSON.parse(payload.toString());
+                            handleIncomingSyncEvent(data);
+                        } catch(e) {}
+                    });
+
+                    syncMqttClient.on('error', () => updateSyncBadge(false));
+                    syncMqttClient.on('close', () => updateSyncBadge(false));
+                }
+            } catch(e) {
+                console.warn('Realtime sync setup note:', e);
+            }
+        }
+
+        function broadcastSyncEvent(data) {
+            const enriched = { 
+                ...data, 
+                senderId: state.currentUser?.email || 'anon_' + Math.random().toString(16).substr(2, 4),
+                timestamp: Date.now() 
+            };
+
+            // 1. MQTT Cloud WebSocket (cross-device: phone to laptop)
+            if (syncMqttClient && syncMqttClient.connected) {
+                try {
+                    syncMqttClient.publish(REALTIME_TOPIC, JSON.stringify(enriched));
+                } catch(e) {}
+            }
+
+            // 2. BroadcastChannel (cross-tab same browser)
+            if (syncBroadcastChannel) {
+                try {
+                    syncBroadcastChannel.postMessage(enriched);
+                } catch(e) {}
+            }
+
+            // 3. LocalStorage event (fallback cross-tab)
+            try {
+                localStorage.setItem('printswift_sync_event', JSON.stringify(enriched));
+            } catch(e) {}
+        }
+
+        function updateSyncBadge(connected) {
+            const badge = document.getElementById('db-sync-badge');
+            if (badge) {
+                if (connected) {
+                    badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-lime-300 animate-pulse"></span> Auto-Sync Live`;
+                    badge.classList.remove('text-slate-400');
+                    badge.classList.add('text-lime-300');
+                } else {
+                    badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-lime-300"></span> DB Ready`;
+                }
+            }
+        }
+
+        function handleIncomingSyncEvent(data) {
+            if (!data || !data.event) return;
+
+            if (data.event === 'ORDER_SCANNED_COMPLETED') {
+                const targetOrder = state.orders.find(o => o.id === data.orderId || o.pickupCode === data.pickupCode);
+                if (targetOrder) {
+                    targetOrder.status = 'completed';
+                    targetOrder.fileDeleted = true;
+
+                    // If vendor received this on another tab/device:
+                    if (state.role === 'vendor' && data.payout) {
+                        state.vendorEarnings += data.payout;
+                        state.walletBalance += data.payout;
+                        document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+                    }
+
+                    // If student (pelanggan) is viewing this order:
+                    if (window.activePickupOrderId === targetOrder.id || (document.getElementById('student-pickup-qr-container') && state.role === 'student')) {
+                        showStudentVerifiedHandoverSuccess(targetOrder);
+                    } else if (state.role === 'student') {
+                        playAppSound('chime');
+                        triggerConfetti();
+                        showNotification(`Vendor verified handover for "${targetOrder.fileName}"! Auto-deleted.`);
+                        render();
+                    } else {
+                        render();
+                    }
+                }
+            } else if (data.event === 'NEW_ORDER_CREATED') {
+                if (data.order && !state.orders.some(o => o.id === data.order.id)) {
+                    state.orders.unshift(data.order);
+                    if (state.role === 'vendor') {
+                        playAppSound('scan');
+                        showNotification(`New print job: "${data.order.fileName}" from ${data.order.studentName}!`);
+                    }
+                    render();
+                }
+            }
+        }
+
         // --- EXPANDED APPLICATION STATE WITH AUTH, TUTORIAL & DATABASE ---
         window.state = {
             isAuthenticated: false,
@@ -717,6 +856,11 @@
         }
 
         function closeModal() {
+            if (window.pickupAutoSyncChecker) {
+                clearInterval(window.pickupAutoSyncChecker);
+                window.pickupAutoSyncChecker = null;
+            }
+            window.activePickupOrderId = null;
             stopActiveScannerStream();
             document.getElementById('app-modal').classList.add('hidden');
         }
@@ -1064,9 +1208,80 @@
             `);
         }
 
+        function showStudentVerifiedHandoverSuccess(order) {
+            if (window.pickupAutoSyncChecker) {
+                clearInterval(window.pickupAutoSyncChecker);
+                window.pickupAutoSyncChecker = null;
+            }
+            window.activePickupOrderId = null;
+
+            playAppSound('chime');
+            triggerConfetti();
+
+            openModal(`
+                <div class="text-center space-y-3.5 py-1">
+                    <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center animate-bounce shadow-md">
+                        <i data-lucide="check-circle" class="w-10 h-10"></i>
+                    </div>
+
+                    <div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase tracking-wide flex items-center justify-center gap-1 w-max mx-auto">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Auto-Synced: Vendor Scanned Pass
+                        </span>
+                        <h3 class="text-lg font-black text-slate-900 mt-1.5">Pick-Up Verified!</h3>
+                        <p class="text-xs text-slate-500">${order.fileName} • ${order.vendorName}</p>
+                    </div>
+
+                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-left space-y-2 text-xs">
+                        <div class="flex justify-between items-center text-slate-600">
+                            <span>Escrow Released:</span>
+                            <span class="font-extrabold text-emerald-700">RM${order.total.toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-600">
+                            <span>Customer Privacy:</span>
+                            <span class="font-bold text-emerald-700 flex items-center gap-1">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> File Auto-Deleted from Vendor
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-600">
+                            <span>Pick-Up Point:</span>
+                            <span class="font-bold text-slate-800">${order.pickup}</span>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Vendor Rating -->
+                    <div class="pt-1">
+                        <p class="text-xs font-bold text-slate-800 mb-2">How was your printing experience?</p>
+                        <div class="flex justify-center gap-2">
+                            ${[1, 2, 3, 4, 5].map(s => `
+                                <button onclick="rateOrder('${order.id}', ${s}); closeModal();" class="w-11 h-11 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-500 font-extrabold text-sm flex items-center justify-center transition active:scale-95 shadow-2xs">
+                                    ${s}★
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <button onclick="closeModal(); render();" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition">
+                        Done / Back to Orders
+                    </button>
+                </div>
+            `);
+            render();
+        }
+
         function openPickupVerificationModal(orderId) {
             const order = state.orders.find(o => o.id === orderId);
             if (!order) return;
+
+            window.activePickupOrderId = orderId;
+            if (window.pickupAutoSyncChecker) clearInterval(window.pickupAutoSyncChecker);
+            window.pickupAutoSyncChecker = setInterval(() => {
+                const cur = state.orders.find(o => o.id === orderId);
+                if (cur && cur.status === 'completed') {
+                    showStudentVerifiedHandoverSuccess(cur);
+                }
+            }, 300);
+
             openModal(`
                 <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                     <div class="flex items-center gap-2">
@@ -1075,15 +1290,20 @@
                         </div>
                         <div>
                             <h3 class="text-sm font-extrabold text-slate-900">Student Pick-Up Pass</h3>
-                            <p class="text-[10px] text-slate-500">Show to vendor or scan desk stand</p>
+                            <p class="text-[10px] text-slate-500 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-lime-500 animate-pulse"></span> Auto-Sync Active • Show to vendor
+                            </p>
                         </div>
                     </div>
                     <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
                 </div>
 
                 <div class="bg-slate-900 text-white p-4 rounded-3xl text-center space-y-2 relative overflow-hidden shadow-lg">
-                    <p class="text-[11px] text-slate-300">Show this QR code to vendor at <span class="text-lime-300 font-bold">${order.pickup}</span></p>
-                    
+                    <div class="flex items-center justify-center gap-1.5 text-[10px] text-lime-300 font-bold">
+                        <span class="w-2 h-2 rounded-full bg-lime-400 animate-ping"></span>
+                        <span>Waiting for Vendor Scan • Auto-Sync On</span>
+                    </div>
+
                     <!-- Dynamic Scannable QR Code Target -->
                     <div class="relative w-36 h-36 mx-auto bg-white rounded-2xl p-2 flex items-center justify-center shadow-inner">
                         <div id="student-pickup-qr-container" class="w-full h-full flex items-center justify-center"></div>
@@ -1096,7 +1316,7 @@
 
                 <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-start gap-2">
                     <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
-                    <span>Verifying handover releases <strong>RM${order.total.toFixed(2)}</strong> from escrow to vendor and triggers <strong>permanent document deletion</strong>.</span>
+                    <span>Once vendor scans your pass, this screen <strong>instantly auto-syncs</strong>, releases escrow, and wipes the document.</span>
                 </div>
 
                 <div class="space-y-2">
@@ -1829,6 +2049,12 @@
             state.orders.unshift(newOrder);
             if (window.dbService) window.dbService.saveOrder(newOrder);
 
+            // Broadcast new order creation to vendor device/tab
+            broadcastSyncEvent({
+                event: 'NEW_ORDER_CREATED',
+                order: newOrder
+            });
+
             if (!state.chats[vendor.id]) state.chats[vendor.id] = [];
             state.chats[vendor.id].push({
                 sender: 'student',
@@ -1866,6 +2092,17 @@
                     method: 'Escrow Released'
                 });
                 if (window.dbService) window.dbService.saveOrder(order);
+
+                // Broadcast real-time auto-sync to all devices / tabs
+                broadcastSyncEvent({
+                    event: 'ORDER_SCANNED_COMPLETED',
+                    orderId: order.id,
+                    pickupCode: order.pickupCode,
+                    payout: payout,
+                    vendorName: order.vendorName,
+                    fileName: order.fileName
+                });
+
                 playAppSound('chime');
                 triggerConfetti();
                 showNotification('Pick-up verified! Escrow released & file permanently wiped.');
@@ -2082,8 +2319,24 @@
                 window.dbService.saveOrder(matchedOrder);
             }
 
+            // Broadcast real-time auto-sync to student / pelanggan device
+            broadcastSyncEvent({
+                event: 'ORDER_SCANNED_COMPLETED',
+                orderId: matchedOrder.id,
+                pickupCode: matchedOrder.pickupCode,
+                payout: payout,
+                vendorName: matchedOrder.vendorName,
+                fileName: matchedOrder.fileName
+            });
+
             playAppSound('chime');
             triggerConfetti();
+
+            // If the student's pass is open on this device:
+            if (window.activePickupOrderId === matchedOrder.id || state.role === 'student') {
+                showStudentVerifiedHandoverSuccess(matchedOrder);
+                return;
+            }
 
             closeModal();
             showNotification(`QR Verified! +RM${payout.toFixed(2)} credited to your wallet. Customer file auto-deleted.`);
@@ -2984,6 +3237,7 @@
         };
 
         window.onload = function() {
+            initRealtimeSync();
             updateChromeVisibility();
             window.render();
         };
