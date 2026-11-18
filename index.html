@@ -10,6 +10,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <!-- QRCode.js (Dynamic Client-Side QR Generation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- jsQR (Universal Camera & Image QR Code Scanner) -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -280,6 +286,14 @@
             vendorOnline: true,
             walletBalance: 25.00,
             vendorEarnings: 24.60,
+            walletTab: 'topup', // 'topup' | 'scan' | 'withdraw' | 'history'
+            pendingTopUpAmount: 10.00,
+            walletTransactions: [
+                { id: 'TXN-9120', type: 'topup', title: 'Top-Up via DuitNow QR', amount: 20.00, time: 'Today, 21:15', status: 'Completed', method: 'DuitNow QR' },
+                { id: 'TXN-9084', type: 'escrow_hold', title: 'Escrow Lock: Lab_Sheet_Week9.pdf', amount: -1.50, time: 'Today, 22:30', status: 'Held in Escrow', method: 'Campus E-Wallet' },
+                { id: 'TXN-8975', type: 'topup', title: 'Top-Up via Touch \'n Go eWallet', amount: 10.00, time: 'Yesterday, 14:05', status: 'Completed', method: 'Touch \'n Go' },
+                { id: 'TXN-8912', type: 'refund', title: 'Reprint Guarantee Refund', amount: 1.20, time: '16 Nov, 18:40', status: 'Refunded', method: 'System Credit' }
+            ],
             searchQuery: '',
             collegeFilter: 'All',
             selectedVendorId: 1,
@@ -501,13 +515,209 @@
             lucide.createIcons();
         }
 
-        function closeModal() {
+        // --- AUDIO, CONFETTI & QR ENGINE ---
+        function playAppSound(type = 'success') {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const now = ctx.currentTime;
+                
+                if (type === 'scan' || type === 'chime') {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(587.33, now); // D5
+                    osc.frequency.setValueAtTime(880.00, now + 0.08); // A5
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.28);
+                } else if (type === 'cash') {
+                    const osc1 = ctx.createOscillator();
+                    const osc2 = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc1.type = 'triangle';
+                    osc2.type = 'sine';
+                    osc1.frequency.setValueAtTime(523.25, now); // C5
+                    osc2.frequency.setValueAtTime(1046.50, now + 0.07); // C6
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc1.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc1.start(now);
+                    osc2.start(now + 0.07);
+                    osc1.stop(now + 0.35);
+                    osc2.stop(now + 0.35);
+                } else {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                }
+            } catch(e) {}
+        }
+
+        function triggerConfetti() {
+            if (typeof confetti === 'function') {
+                try {
+                    confetti({
+                        particleCount: 75,
+                        spread: 80,
+                        origin: { y: 0.6 }
+                    });
+                } catch(e) {}
+            }
+        }
+
+        // --- High-Fidelity Client-Side QR Code Generator ---
+        function generateQRCode(elementId, text, size = 140) {
+            const container = typeof elementId === 'string' ? document.getElementById(elementId) : elementId;
+            if (!container) return;
+            container.innerHTML = '';
+            
+            try {
+                if (window.QRCode) {
+                    new QRCode(container, {
+                        text: text,
+                        width: size,
+                        height: size,
+                        colorDark: "#0f172a",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.warn('QRCode JS note, fallback to dynamic image:', err);
+            }
+
+            // Universal high-res fallback
+            const img = document.createElement('img');
+            img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=4&data=${encodeURIComponent(text)}`;
+            img.alt = 'QR Code';
+            img.className = 'w-full h-full object-contain rounded-lg';
+            container.appendChild(img);
+        }
+
+        // --- Universal Real-Time QR Scanner (Camera & File) ---
+        window.activeScannerStream = null;
+        window.activeScannerRaf = null;
+
+        function stopActiveScannerStream() {
+            if (window.activeScannerRaf) {
+                cancelAnimationFrame(window.activeScannerRaf);
+                window.activeScannerRaf = null;
+            }
             if (window.activeScannerStream) {
                 try {
                     window.activeScannerStream.getTracks().forEach(t => t.stop());
                 } catch (e) {}
                 window.activeScannerStream = null;
             }
+        }
+
+        function startUniversalQRScanner(videoElementId, onDecodedCallback) {
+            const video = document.getElementById(videoElementId);
+            const fallbackMsg = document.getElementById('camera-fallback-msg');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+            stopActiveScannerStream();
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                if (fallbackMsg) fallbackMsg.classList.remove('hidden');
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } }
+            })
+            .then(stream => {
+                window.activeScannerStream = stream;
+                if (!video) return;
+                video.srcObject = stream;
+                video.setAttribute('playsinline', true);
+                video.play().catch(e => console.log('Video play note:', e));
+                if (fallbackMsg) fallbackMsg.classList.add('hidden');
+
+                function scanLoop() {
+                    if (!window.activeScannerStream || !video || video.readyState !== video.HAVE_ENOUGH_DATA) {
+                        window.activeScannerRaf = requestAnimationFrame(scanLoop);
+                        return;
+                    }
+
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                    let foundCode = null;
+
+                    if (window.jsQR) {
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: 'dontInvert'
+                        });
+                        if (code && code.data) {
+                            foundCode = code.data;
+                        }
+                    }
+
+                    if (foundCode) {
+                        stopActiveScannerStream();
+                        onDecodedCallback(foundCode);
+                        return;
+                    }
+
+                    window.activeScannerRaf = requestAnimationFrame(scanLoop);
+                }
+
+                window.activeScannerRaf = requestAnimationFrame(scanLoop);
+            })
+            .catch(err => {
+                console.warn('Camera stream warning:', err);
+                if (fallbackMsg) fallbackMsg.classList.remove('hidden');
+            });
+        }
+
+        function scanQRFromImageFile(inputEl, onDecodedCallback) {
+            const file = inputEl.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    if (window.jsQR) {
+                        const code = jsQR(imageData.data, imageData.width, imageData.height);
+                        if (code && code.data) {
+                            onDecodedCallback(code.data);
+                            return;
+                        }
+                    }
+                    showNotification('Could not detect QR code in this image. Enter 4-digit PIN manually.');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function closeModal() {
+            stopActiveScannerStream();
             document.getElementById('app-modal').classList.add('hidden');
         }
 
@@ -858,34 +1068,152 @@
             const order = state.orders.find(o => o.id === orderId);
             if (!order) return;
             openModal(`
-                <div class="flex items-center justify-between">
-                    <h3 class="text-base font-extrabold text-slate-900">Verify Pick-Up & Release</h3>
-                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                            <i data-lucide="qr-code" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-extrabold text-slate-900">Student Pick-Up Pass</h3>
+                            <p class="text-[10px] text-slate-500">Show to vendor or scan desk stand</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
                 </div>
 
-                <div class="bg-slate-900 text-white p-4 rounded-3xl text-center space-y-2 relative overflow-hidden">
-                    <p class="text-[11px] text-slate-300">Show this Pick-Up PIN or scan vendor QR at <span class="text-lime-300 font-bold">${order.pickup}</span></p>
-                    <div class="relative w-32 h-32 mx-auto bg-white rounded-2xl p-2 flex items-center justify-center">
-                        <i data-lucide="qr-code" class="w-24 h-24 text-slate-900"></i>
-                        <div class="animate-scanline absolute left-2 right-2 h-0.5 bg-pink-500 shadow-[0_0_8px_#ec4899]"></div>
+                <div class="bg-slate-900 text-white p-4 rounded-3xl text-center space-y-2 relative overflow-hidden shadow-lg">
+                    <p class="text-[11px] text-slate-300">Show this QR code to vendor at <span class="text-lime-300 font-bold">${order.pickup}</span></p>
+                    
+                    <!-- Dynamic Scannable QR Code Target -->
+                    <div class="relative w-36 h-36 mx-auto bg-white rounded-2xl p-2 flex items-center justify-center shadow-inner">
+                        <div id="student-pickup-qr-container" class="w-full h-full flex items-center justify-center"></div>
+                        <div class="animate-scanline absolute left-2 right-2 h-0.5 bg-pink-500 shadow-[0_0_8px_#ec4899] pointer-events-none"></div>
                     </div>
+
                     <div class="text-xl font-black tracking-[0.25em] text-lime-300 pt-1">#${order.pickupCode}</div>
+                    <div class="text-[10px] text-slate-400 font-medium">Order: ${order.id} • ${order.fileName}</div>
                 </div>
 
                 <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-start gap-2">
                     <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
-                    <span>Confirming pick-up releases <strong>RM${order.total.toFixed(2)}</strong> from escrow and triggers <strong>immediate file auto-deletion</strong>.</span>
+                    <span>Verifying handover releases <strong>RM${order.total.toFixed(2)}</strong> from escrow to vendor and triggers <strong>permanent document deletion</strong>.</span>
                 </div>
 
-                <div class="flex gap-2">
-                    <button onclick="openReprintModal('${order.id}')" class="px-3.5 py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-2xl">
-                        Print Issue?
-                    </button>
-                    <button onclick="closeModal(); confirmPickup('${order.id}');" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm">
-                        Confirm Handover Complete
+                <div class="space-y-2">
+                    <div class="flex gap-2">
+                        <button onclick="openReprintModal('${order.id}')" class="px-3.5 py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-2xl transition">
+                            Print Issue?
+                        </button>
+                        <button onclick="closeModal(); confirmPickup('${order.id}');" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i> Confirm Handover Complete
+                        </button>
+                    </div>
+
+                    <button onclick="openStudentScannerForVendorDesk('${order.id}')" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="camera" class="w-3.5 h-3.5 text-blue-600"></i> Or Scan Vendor Desk QR Stand
                     </button>
                 </div>
             `);
+
+            setTimeout(() => {
+                generateQRCode('student-pickup-qr-container', `PRINTSWIFT:PIN:${order.pickupCode}:ORDER:${order.id}`, 124);
+            }, 50);
+        }
+
+        function openStudentScannerForVendorDesk(orderId) {
+            const order = state.orders.find(o => o.id === orderId);
+            if (!order) return;
+
+            openModal(`
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                            <i data-lucide="scan" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-extrabold text-slate-900">Scan Vendor Desk QR</h3>
+                            <p class="text-[10px] text-slate-500">Scan vendor stand at ${order.pickup}</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <!-- Live Camera Viewfinder -->
+                <div class="relative w-full h-48 bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-slate-800 shadow-inner">
+                    <video id="student-camera-feed" class="w-full h-full object-cover" autoplay playsinline muted></video>
+                    
+                    <div class="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
+                        <div class="relative w-36 h-36 border-2 border-dashed border-lime-400/80 rounded-2xl flex items-center justify-center">
+                            <div class="animate-scanline absolute left-1 right-1 h-0.5 bg-blue-500 shadow-[0_0_10px_#3b82f6]"></div>
+                            <div class="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-lime-400"></div>
+                            <div class="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-lime-400"></div>
+                            <div class="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-lime-400"></div>
+                            <div class="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-lime-400"></div>
+                        </div>
+                    </div>
+
+                    <div id="camera-fallback-msg" class="absolute inset-0 bg-slate-900/90 text-white p-3 flex flex-col items-center justify-center text-center space-y-1">
+                        <i data-lucide="camera" class="w-7 h-7 text-lime-300"></i>
+                        <span class="text-xs font-bold text-slate-100">Live Camera Scanner</span>
+                        <span class="text-[10px] text-slate-400 max-w-[210px]">Aim at vendor desk QR stand to confirm arrival</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <button onclick="confirmPickup('${order.id}'); closeModal();" class="w-full py-2.5 bg-lime-300 hover:bg-lime-400 text-slate-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95">
+                        <i data-lucide="zap" class="w-3.5 h-3.5 fill-slate-900"></i>
+                        <span>Simulate Scan: Vendor Desk QR (${order.vendorName.split(' ')[0]})</span>
+                    </button>
+                    <button onclick="openPickupVerificationModal('${order.id}')" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">
+                        Back to My Pick-Up QR
+                    </button>
+                </div>
+            `);
+
+            startUniversalQRScanner('student-camera-feed', (decoded) => {
+                confirmPickup(order.id);
+                closeModal();
+            });
+        }
+
+        function openVendorQRStand() {
+            const v = state.vendors.find(x => x.id === 1) || state.vendors[0];
+            openModal(`
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-lime-200 text-slate-900 flex items-center justify-center font-bold">
+                            <i data-lucide="qr-code" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-extrabold text-slate-900">Your Desk Pick-Up Stand</h3>
+                            <p class="text-[10px] text-slate-500">Students scan this QR at your room/desk</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <div class="bg-slate-900 text-white p-4 rounded-3xl text-center space-y-2 relative overflow-hidden shadow-lg">
+                    <span class="text-[10px] uppercase font-bold tracking-widest text-lime-300">UNIMAS Verified Vendor Stand</span>
+                    <h4 class="text-base font-extrabold text-white">${v.name} (${v.code})</h4>
+                    <p class="text-xs text-slate-300">${v.college}</p>
+                    
+                    <div class="relative w-40 h-40 mx-auto bg-white rounded-2xl p-2.5 flex items-center justify-center shadow-inner mt-2">
+                        <div id="vendor-stand-qr-target" class="w-full h-full flex items-center justify-center"></div>
+                    </div>
+
+                    <p class="text-[10px] text-slate-400 pt-1">Students can scan this directly to verify pick-up without showing phone.</p>
+                </div>
+
+                <div class="flex gap-2">
+                    <button onclick="showNotification('Desk QR Stand downloaded / ready to print.'); closeModal();" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition">
+                        Save / Print Desk Stand
+                    </button>
+                </div>
+            `);
+
+            setTimeout(() => {
+                generateQRCode('vendor-stand-qr-target', `PRINTSWIFT:VENDOR:${v.id}:${v.code}:${v.matric}`, 140);
+            }, 50);
         }
 
         function openReprintModal(orderId) {
@@ -935,36 +1263,354 @@
             `);
         }
 
-        function openWalletModal() {
-            openModal(`
-                <div class="flex items-center justify-between">
-                    <h3 class="text-base font-extrabold text-slate-900">Campus E-Wallet & DuitNow</h3>
-                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
-                </div>
-                <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 rounded-2xl">
-                    <span class="text-[11px] text-blue-100">Available Balance</span>
-                    <div class="text-2xl font-black mt-0.5">RM${state.walletBalance.toFixed(2)}</div>
-                    <span class="text-[10px] text-lime-300 font-semibold">Linked: DuitNow QR / Touch 'n Go eWallet</span>
-                </div>
-                <div class="grid grid-cols-3 gap-2">
-                    ${[5, 10, 20].map(amt => `
-                        <button onclick="topUpWallet(${amt})" class="py-2.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 font-extrabold text-xs rounded-xl border border-slate-200 transition">
-                            + RM${amt}
-                        </button>
-                    `).join('')}
-                </div>
-            `);
+        // --- FULLY FUNCTIONAL CAMPUS E-WALLET & DUITNOW ---
+        function openWalletModal(defaultTab = 'topup') {
+            state.walletTab = defaultTab;
+            renderWalletModalContent();
         }
 
-        function topUpWallet(amount) {
-            state.walletBalance += amount;
+        function renderWalletModalContent() {
+            const bal = state.walletBalance;
+
+            openModal(`
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold">
+                            <i data-lucide="wallet" class="w-4 h-4 text-lime-300"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-extrabold text-slate-900">Campus E-Wallet & DuitNow</h3>
+                            <p class="text-[10px] text-slate-500">UNIMAS FinTech • Escrow Protection Active</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <!-- Balance Card -->
+                <div class="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white p-4 rounded-3xl shadow-md relative overflow-hidden">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-[10px] text-blue-200 uppercase font-bold tracking-wider">Available E-Wallet Balance</span>
+                            <div class="text-3xl font-black mt-0.5 tracking-tight">RM${bal.toFixed(2)}</div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-lime-300 text-slate-900 text-[10px] font-extrabold uppercase">
+                            ${state.role}
+                        </span>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-blue-500/40 flex items-center justify-between text-[10px] text-blue-100">
+                        <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-lime-300"></i> Escrow Guarantee Active</span>
+                        <span class="font-mono">ID: ${state.currentUser?.matric || '98387'}@siswa</span>
+                    </div>
+                </div>
+
+                <!-- Wallet Tab Navigation -->
+                <div class="flex bg-slate-100 p-1 rounded-2xl text-xs font-bold">
+                    <button onclick="state.walletTab='topup'; renderWalletModalContent();" class="flex-1 py-1.5 rounded-xl transition ${state.walletTab === 'topup' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                        Top-Up
+                    </button>
+                    <button onclick="state.walletTab='scan'; renderWalletModalContent();" class="flex-1 py-1.5 rounded-xl transition ${state.walletTab === 'scan' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                        Scan & Pay
+                    </button>
+                    <button onclick="state.walletTab='withdraw'; renderWalletModalContent();" class="flex-1 py-1.5 rounded-xl transition ${state.walletTab === 'withdraw' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                        Cash Out
+                    </button>
+                    <button onclick="state.walletTab='history'; renderWalletModalContent();" class="flex-1 py-1.5 rounded-xl transition ${state.walletTab === 'history' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                        History
+                    </button>
+                </div>
+
+                <!-- Tab Body Content -->
+                <div class="space-y-3">
+                    ${getWalletTabBodyHTML()}
+                </div>
+            `);
+
+            // If in topup tab, generate the dynamic DuitNow QR
+            if (state.walletTab === 'topup') {
+                setTimeout(() => {
+                    const amt = state.pendingTopUpAmount || 10;
+                    generateQRCode('duitnow-topup-qr-target', `duitnow://pay?merchant=PrintSwift_UNIMAS_Escrow&amount=${amt.toFixed(2)}&ref=DN-TOPUP-${Date.now()}`, 124);
+                }, 50);
+            }
+        }
+
+        function getWalletTabBodyHTML() {
+            if (state.walletTab === 'topup') {
+                const amt = state.pendingTopUpAmount || 10;
+                return `
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-extrabold text-slate-800">Select Top-Up Amount</span>
+                            <span class="text-[10px] text-pink-600 font-bold flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse"></span> DuitNow Instant
+                            </span>
+                        </div>
+
+                        <!-- Quick Amount Buttons -->
+                        <div class="grid grid-cols-4 gap-1.5">
+                            ${[5, 10, 20, 50].map(v => `
+                                <button onclick="setTopUpAmount(${v})" class="py-2 rounded-xl text-xs font-extrabold transition border ${amt === v ? 'bg-blue-600 text-white border-blue-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}">
+                                    RM${v}
+                                </button>
+                            `).join('')}
+                        </div>
+
+                        <!-- Real Dynamic DuitNow QR Box -->
+                        <div class="bg-slate-900 text-white p-3.5 rounded-2xl text-center space-y-2 relative overflow-hidden shadow-inner">
+                            <div class="flex items-center justify-center gap-1.5 text-[11px] text-pink-400 font-extrabold">
+                                <span class="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
+                                <span>Scan DuitNow QR Code (RM${amt.toFixed(2)})</span>
+                            </div>
+
+                            <div class="relative w-36 h-36 mx-auto bg-white rounded-xl p-2 flex items-center justify-center shadow-md">
+                                <div id="duitnow-topup-qr-target" class="w-full h-full flex items-center justify-center"></div>
+                            </div>
+
+                            <p class="text-[10px] text-slate-400">Scan with Touch 'n Go, MAE, GrabPay or Bank Islam</p>
+                        </div>
+
+                        <!-- Action Simulation Button -->
+                        <button onclick="confirmDuitNowTopUp(${amt})" class="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                            <span>Simulate Bank / TNG Approval (+RM${amt.toFixed(2)})</span>
+                        </button>
+                    </div>
+                `;
+            }
+
+            if (state.walletTab === 'scan') {
+                return `
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-center space-y-3">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 mx-auto flex items-center justify-center">
+                            <i data-lucide="scan" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-extrabold text-slate-900">Scan DuitNow QR or Vendor Desk</h4>
+                            <p class="text-[11px] text-slate-500">Pay directly from your Campus E-Wallet</p>
+                        </div>
+                        <div class="space-y-2 pt-1">
+                            <button onclick="openUniversalScannerForPayment()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 transition active:scale-95">
+                                <i data-lucide="camera" class="w-4 h-4"></i> Open QR Camera Scanner
+                            </button>
+                            <input type="file" id="wallet-scan-image" accept="image/*" class="hidden" onchange="scanQRFromImageFile(this, handlePaymentQRScanSuccess)">
+                            <button onclick="document.getElementById('wallet-scan-image').click()" class="w-full py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 flex items-center justify-center gap-1.5 transition">
+                                <i data-lucide="image" class="w-3.5 h-3.5"></i> Upload QR Image
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (state.walletTab === 'withdraw') {
+                return `
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
+                        <div class="flex justify-between items-center">
+                            <h4 class="text-xs font-extrabold text-slate-900">Cash Out to Bank / DuitNow</h4>
+                            <span class="text-[10px] text-emerald-700 font-bold">Max: RM${state.walletBalance.toFixed(2)}</span>
+                        </div>
+                        <div class="space-y-2 text-xs">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Select Destination</label>
+                                <select id="withdraw-bank" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-semibold">
+                                    <option value="Touch 'n Go eWallet">Touch 'n Go eWallet (DuitNow)</option>
+                                    <option value="Maybank (MAE)">Maybank / MAE</option>
+                                    <option value="CIMB Bank">CIMB Bank</option>
+                                    <option value="Bank Islam">Bank Islam</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Account No. / DuitNow Mobile ID</label>
+                                <input id="withdraw-account" type="text" value="019-8829412" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-semibold">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Withdrawal Amount (RM)</label>
+                                <input id="withdraw-amount" type="number" step="0.5" max="${state.walletBalance}" value="${Math.min(state.walletBalance, 10).toFixed(2)}" class="w-full p-2 rounded-xl border border-slate-200 bg-white font-extrabold text-blue-600">
+                            </div>
+                        </div>
+                        <button onclick="withdrawFromWallet()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition active:scale-95">
+                            Confirm Withdrawal
+                        </button>
+                    </div>
+                `;
+            }
+
+            if (state.walletTab === 'history') {
+                return `
+                    <div class="space-y-1.5 max-h-56 overflow-y-auto no-scrollbar pr-0.5">
+                        ${state.walletTransactions.map(t => `
+                            <div class="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-7 h-7 rounded-lg ${t.amount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'} flex items-center justify-center font-bold text-xs">
+                                        <i data-lucide="${t.amount > 0 ? 'arrow-down-left' : 'arrow-up-right'}" class="w-3.5 h-3.5"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-[11px] font-extrabold text-slate-900">${t.title}</div>
+                                        <div class="text-[9px] text-slate-500">${t.time} • ${t.method || 'DuitNow'}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs font-black ${t.amount > 0 ? 'text-emerald-700' : 'text-slate-800'}">
+                                        ${t.amount > 0 ? '+' : ''}RM${Math.abs(t.amount).toFixed(2)}
+                                    </div>
+                                    <span class="text-[9px] font-bold text-slate-400">${t.status}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+        }
+
+        function setTopUpAmount(amt) {
+            state.pendingTopUpAmount = amt;
+            renderWalletModalContent();
+        }
+
+        function confirmDuitNowTopUp(amt) {
+            state.walletBalance += amt;
+            state.walletTransactions.unshift({
+                id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                type: 'topup',
+                title: 'Top-Up via DuitNow QR',
+                amount: amt,
+                time: 'Just now',
+                status: 'Completed',
+                method: 'DuitNow QR'
+            });
+
             if (state.currentUser) {
                 state.currentUser.walletBalance = state.walletBalance;
                 if (window.dbService) window.dbService.saveUserAccount(state.currentUser);
             }
+
             document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+            playAppSound('cash');
+            triggerConfetti();
             closeModal();
-            showNotification(`Topped up RM${amount.toFixed(2)} via DuitNow QR!`);
+            showNotification(`Topped up RM${amt.toFixed(2)} via DuitNow QR!`);
+            render();
+        }
+
+        function topUpWalletDirect(amount) {
+            confirmDuitNowTopUp(amount);
+        }
+
+        function withdrawFromWallet() {
+            const amtInput = document.getElementById('withdraw-amount');
+            const bankSelect = document.getElementById('withdraw-bank');
+            const accInput = document.getElementById('withdraw-account');
+
+            const amt = parseFloat(amtInput ? amtInput.value : 0);
+            const bank = bankSelect ? bankSelect.value : 'Touch \'n Go';
+            const acc = accInput ? accInput.value : '019-8829412';
+
+            if (!amt || amt <= 0) {
+                showNotification('Please enter a valid withdrawal amount.');
+                return;
+            }
+            if (amt > state.walletBalance) {
+                showNotification('Withdrawal amount exceeds your current balance.');
+                return;
+            }
+
+            state.walletBalance -= amt;
+            state.walletTransactions.unshift({
+                id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                type: 'withdrawal',
+                title: `Withdrawal to ${bank}`,
+                amount: -amt,
+                time: 'Just now',
+                status: 'Completed',
+                method: 'Bank Transfer'
+            });
+
+            if (state.currentUser) {
+                state.currentUser.walletBalance = state.walletBalance;
+                if (window.dbService) window.dbService.saveUserAccount(state.currentUser);
+            }
+
+            document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+            playAppSound('cash');
+            closeModal();
+            showNotification(`Transferred RM${amt.toFixed(2)} to ${bank} (${acc})!`);
+            render();
+        }
+
+        function openUniversalScannerForPayment() {
+            openModal(`
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                            <i data-lucide="scan" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-extrabold text-slate-900">Scan QR Code to Pay</h3>
+                            <p class="text-[10px] text-slate-500">Scan any student vendor desk or DuitNow QR</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <!-- Live Camera Viewfinder -->
+                <div class="relative w-full h-48 bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-slate-800 shadow-inner">
+                    <video id="payment-camera-feed" class="w-full h-full object-cover" autoplay playsinline muted></video>
+                    
+                    <div class="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
+                        <div class="relative w-36 h-36 border-2 border-dashed border-lime-400/80 rounded-2xl flex items-center justify-center">
+                            <div class="animate-scanline absolute left-1 right-1 h-0.5 bg-pink-500 shadow-[0_0_10px_#ec4899]"></div>
+                            <div class="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-lime-400"></div>
+                            <div class="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-lime-400"></div>
+                            <div class="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-lime-400"></div>
+                            <div class="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-lime-400"></div>
+                        </div>
+                    </div>
+
+                    <div id="camera-fallback-msg" class="absolute inset-0 bg-slate-900/90 text-white p-3 flex flex-col items-center justify-center text-center space-y-1">
+                        <i data-lucide="camera" class="w-7 h-7 text-lime-300"></i>
+                        <span class="text-xs font-bold text-slate-100">Live Camera Ready</span>
+                        <span class="text-[10px] text-slate-400 max-w-[210px]">Point at vendor QR code or test with simulate button below</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <button onclick="handlePaymentQRScanSuccess('PRINTSWIFT:VENDOR:1:AMIRUL-KBR')" class="w-full py-2.5 bg-lime-300 hover:bg-lime-400 text-slate-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95">
+                        <i data-lucide="zap" class="w-3.5 h-3.5 fill-slate-900"></i>
+                        <span>Simulate Scan: Amirul Anas Desk QR (RM1.50)</span>
+                    </button>
+                    <button onclick="openWalletModal('scan')" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">
+                        Back to E-Wallet
+                    </button>
+                </div>
+            `);
+
+            startUniversalQRScanner('payment-camera-feed', handlePaymentQRScanSuccess);
+        }
+
+        function handlePaymentQRScanSuccess(rawScan) {
+            stopActiveScannerStream();
+            playAppSound('cash');
+            const amt = 1.50;
+            if (state.walletBalance < amt) {
+                showNotification('Insufficient wallet balance to complete payment.');
+                closeModal();
+                return;
+            }
+
+            state.walletBalance -= amt;
+            state.walletTransactions.unshift({
+                id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                type: 'payment',
+                title: 'Paid to Amirul Anas (Desk QR)',
+                amount: -amt,
+                time: 'Just now',
+                status: 'Completed',
+                method: 'QR Scan'
+            });
+
+            document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+            triggerConfetti();
+            closeModal();
+            showNotification(`Paid RM${amt.toFixed(2)} to Amirul Anas via QR!`);
             render();
         }
 
@@ -1062,13 +1708,102 @@
 
             if (state.orderForm.paymentMethod === 'Campus E-Wallet') {
                 if (state.walletBalance < totalNum) {
-                    showNotification('Insufficient wallet balance. Top up or use DuitNow QR!');
+                    openModal(`
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                            <h3 class="text-sm font-extrabold text-slate-900">Insufficient Wallet Balance</h3>
+                            <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                        </div>
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-2 text-amber-900">
+                            <p>Your current wallet balance is <strong>RM${state.walletBalance.toFixed(2)}</strong>, but this order requires <strong>RM${totalNum.toFixed(2)}</strong>.</p>
+                            <p class="text-[11px] text-amber-800">Top up instantly using DuitNow QR or Touch 'n Go to proceed.</p>
+                        </div>
+                        <button onclick="closeModal(); openWalletModal('topup');" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition">
+                            Top Up Wallet via DuitNow QR
+                        </button>
+                    `);
                     return;
                 }
                 state.walletBalance -= totalNum;
+                state.walletTransactions.unshift({
+                    id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                    type: 'escrow_hold',
+                    title: `Escrow Lock: ${state.orderForm.fileName}`,
+                    amount: -totalNum,
+                    time: 'Just now',
+                    status: 'Held in Escrow',
+                    method: 'Campus E-Wallet'
+                });
                 document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+                finalizeOrderSubmission(vendor, pricing, totalNum);
+            } else {
+                openDuitNowOrderPaymentModal(vendor, pricing, totalNum);
             }
+        }
 
+        function openDuitNowOrderPaymentModal(vendor, pricing, totalNum) {
+            const refCode = 'DN-' + Math.floor(1000 + Math.random() * 9000);
+            openModal(`
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center font-bold">
+                            <i data-lucide="qr-code" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-extrabold text-slate-900">Pay via DuitNow QR Escrow</h3>
+                            <p class="text-[10px] text-slate-500">Scan with MAE, Touch 'n Go, GrabPay or Bank</p>
+                        </div>
+                    </div>
+                    <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+
+                <div class="bg-slate-900 text-white p-4 rounded-3xl text-center space-y-2 relative overflow-hidden shadow-lg">
+                    <div class="flex items-center justify-center gap-1.5 text-xs text-pink-400 font-extrabold">
+                        <span class="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
+                        <span>DuitNow National QR • UNIMAS Escrow</span>
+                    </div>
+
+                    <!-- Dynamic Real DuitNow QR -->
+                    <div class="relative w-40 h-40 mx-auto bg-white rounded-2xl p-2.5 flex items-center justify-center shadow-inner">
+                        <div id="duitnow-order-qr-target" class="w-full h-full flex items-center justify-center"></div>
+                    </div>
+
+                    <div class="text-xl font-black text-lime-300">RM${totalNum.toFixed(2)}</div>
+                    <div class="text-[10px] text-slate-300 font-mono">Ref: ${refCode} • Merchant: PrintSwift UNIMAS</div>
+                </div>
+
+                <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-start gap-2">
+                    <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+                    <span>Funds stay locked in escrow until you pick up and verify print quality.</span>
+                </div>
+
+                <button onclick="confirmDuitNowOrderPayment('${vendor.id}', ${totalNum}, '${refCode}')" class="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-extrabold text-xs rounded-2xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5">
+                    <i data-lucide="zap" class="w-4 h-4"></i>
+                    Authorize Escrow Payment (RM${totalNum.toFixed(2)})
+                </button>
+            `);
+
+            setTimeout(() => {
+                generateQRCode('duitnow-order-qr-target', `duitnow://pay?merchant=PrintSwift_UNIMAS_Escrow&amount=${totalNum.toFixed(2)}&ref=${refCode}`, 140);
+            }, 60);
+        }
+
+        function confirmDuitNowOrderPayment(vendorId, totalNum, refCode) {
+            const vendor = state.vendors.find(v => v.id == vendorId) || state.vendors[0];
+            const pricing = calculateOrderTotal();
+            state.walletTransactions.unshift({
+                id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                type: 'escrow_hold',
+                title: `DuitNow Escrow Lock: ${state.orderForm.fileName}`,
+                amount: -totalNum,
+                time: 'Just now',
+                status: 'Held in Escrow',
+                method: 'DuitNow QR'
+            });
+            finalizeOrderSubmission(vendor, pricing, totalNum);
+        }
+
+        function finalizeOrderSubmission(vendor, pricing, totalNum) {
+            playAppSound('cash');
             const newOrder = {
                 id: 'PS-2026-' + Math.floor(100 + Math.random() * 900),
                 pickupCode: Math.floor(1000 + Math.random() * 9000).toString(),
@@ -1101,9 +1836,10 @@
                 time: 'Now'
             });
 
+            closeModal();
             state.uploadStep = 1;
             state.studentTab = 'orders';
-            showNotification(`RM${pricing.total} saved to DB & held in Escrow!`);
+            showNotification(`RM${pricing.total} locked safely in Escrow!`);
             render();
         }
 
@@ -1114,8 +1850,24 @@
                 if (order.autoDelete) {
                     order.fileDeleted = true;
                 }
-                state.vendorEarnings += (order.total - 0.20);
+                const payout = order.total - 0.20;
+                state.vendorEarnings += payout;
+                if (state.role === 'vendor') {
+                    state.walletBalance += payout;
+                    document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+                }
+                state.walletTransactions.unshift({
+                    id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                    type: 'payout',
+                    title: `Handover Completed: ${order.fileName}`,
+                    amount: payout,
+                    time: 'Just now',
+                    status: 'Completed',
+                    method: 'Escrow Released'
+                });
                 if (window.dbService) window.dbService.saveOrder(order);
+                playAppSound('chime');
+                triggerConfetti();
                 showNotification('Pick-up verified! Escrow released & file permanently wiped.');
                 render();
             }
@@ -1203,7 +1955,7 @@
         function openVendorQRScanner(targetOrderId = null) {
             const order = targetOrderId 
                 ? state.orders.find(o => o.id === targetOrderId) 
-                : state.orders.find(o => o.status === 'ready' || o.status === 'printing');
+                : state.orders.find(o => o.status === 'ready' || o.status === 'printing' || o.status === 'paid_escrow');
             
             openModal(`
                 <div class="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -1213,7 +1965,7 @@
                         </div>
                         <div>
                             <h3 class="text-sm font-extrabold text-slate-900">Scan Student Pick-Up QR</h3>
-                            <p class="text-[10px] text-slate-500">Scan student screen or enter 4-digit PIN to release escrow</p>
+                            <p class="text-[10px] text-slate-500">Scan student phone, upload QR photo, or enter 4-digit PIN</p>
                         </div>
                     </div>
                     <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -1221,7 +1973,7 @@
 
                 <!-- Live Camera Viewfinder -->
                 <div class="relative w-full h-48 bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-slate-800 shadow-inner">
-                    <video id="vendor-camera-feed" class="w-full h-full object-cover" autoplay playsinline></video>
+                    <video id="vendor-camera-feed" class="w-full h-full object-cover" autoplay playsinline muted></video>
                     
                     <!-- Viewfinder Reticle & Scanline -->
                     <div class="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
@@ -1234,32 +1986,39 @@
                         </div>
                     </div>
 
-                    <!-- Camera status fallback notice -->
+                    <!-- Camera status notice -->
                     <div id="camera-fallback-msg" class="absolute inset-0 bg-slate-900/90 text-white p-3 flex flex-col items-center justify-center text-center space-y-1">
                         <i data-lucide="camera" class="w-7 h-7 text-lime-300"></i>
                         <span class="text-xs font-bold text-slate-100">Live Camera Ready</span>
-                        <span class="text-[10px] text-slate-400 max-w-[210px]">Point at student's QR code or tap the 1-click scan button below</span>
+                        <span class="text-[10px] text-slate-400 max-w-[210px]">Aim at student's QR pass or upload a QR image below</span>
                     </div>
                 </div>
 
-                <!-- 1-Tap Instant Scan Simulator -->
-                ${order ? `
-                    <button onclick="handleQRScanSuccess('${order.pickupCode}')" class="w-full py-2.5 bg-lime-300 hover:bg-lime-400 text-slate-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-98">
-                        <i data-lucide="zap" class="w-4 h-4 fill-slate-900"></i>
-                        <span>Scan PIN #${order.pickupCode} (${order.studentName.split(' ')[0]} • RM${order.total.toFixed(2)})</span>
+                <!-- Action Bar: Upload Image or Quick 1-Tap Simulator -->
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="file" id="vendor-qr-image-input" accept="image/*" class="hidden" onchange="scanQRFromImageFile(this, handleQRScanSuccess)">
+                    <button onclick="document.getElementById('vendor-qr-image-input').click()" class="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="image" class="w-3.5 h-3.5 text-blue-600"></i>
+                        <span>Upload QR Photo</span>
                     </button>
-                ` : `
-                    <button onclick="handleQRScanSuccess('8842')" class="w-full py-2.5 bg-lime-300 hover:bg-lime-400 text-slate-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-98">
-                        <i data-lucide="zap" class="w-4 h-4 fill-slate-900"></i>
-                        <span>Scan Student PIN #8842</span>
-                    </button>
-                `}
+                    ${order ? `
+                        <button onclick="handleQRScanSuccess('${order.pickupCode}')" class="py-2.5 bg-lime-300 hover:bg-lime-400 text-slate-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95">
+                            <i data-lucide="zap" class="w-3.5 h-3.5 fill-slate-900"></i>
+                            <span>Scan PIN #${order.pickupCode}</span>
+                        </button>
+                    ` : `
+                        <button onclick="handleQRScanSuccess('8842')" class="py-2.5 bg-lime-300 hover:bg-lime-400 text-slate-900 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95">
+                            <i data-lucide="zap" class="w-3.5 h-3.5 fill-slate-900"></i>
+                            <span>Scan PIN #8842</span>
+                        </button>
+                    `}
+                </div>
 
                 <!-- Manual 4-Digit PIN Input -->
                 <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1.5">
                     <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block text-center">Or Enter 4-Digit Student PIN</span>
                     <div class="flex gap-2">
-                        <input id="manual-pin-input" type="text" maxlength="4" placeholder="8842" onkeydown="if(event.key==='Enter') verifyManualPin()" class="flex-1 p-2 rounded-xl border border-slate-300 text-center font-black tracking-[0.35em] text-base bg-white focus:outline-none focus:ring-2 focus:ring-pink-500">
+                        <input id="manual-pin-input" type="text" maxlength="4" placeholder="${order ? order.pickupCode : '8842'}" onkeydown="if(event.key==='Enter') verifyManualPin()" class="flex-1 p-2 rounded-xl border border-slate-300 text-center font-black tracking-[0.35em] text-base bg-white focus:outline-none focus:ring-2 focus:ring-pink-500">
                         <button onclick="verifyManualPin()" class="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs rounded-xl transition shadow-xs active:scale-95">
                             Verify
                         </button>
@@ -1267,46 +2026,7 @@
                 </div>
             `);
 
-            startCameraScanner();
-        }
-
-        function startCameraScanner() {
-            const video = document.getElementById('vendor-camera-feed');
-            const fallbackBox = document.getElementById('camera-fallback-msg');
-            if (!video || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                if (fallbackBox) fallbackBox.classList.remove('hidden');
-                return;
-            }
-
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-                .then(stream => {
-                    window.activeScannerStream = stream;
-                    video.srcObject = stream;
-                    video.setAttribute('playsinline', true);
-                    video.play();
-                    if (fallbackBox) fallbackBox.classList.add('hidden');
-
-                    if ('BarcodeDetector' in window) {
-                        const detector = new BarcodeDetector({ formats: ['qr_code'] });
-                        const scanInterval = setInterval(async () => {
-                            if (!window.activeScannerStream) {
-                                clearInterval(scanInterval);
-                                return;
-                            }
-                            try {
-                                const barcodes = await detector.detect(video);
-                                if (barcodes.length > 0) {
-                                    clearInterval(scanInterval);
-                                    handleQRScanSuccess(barcodes[0].rawValue);
-                                }
-                            } catch (e) {}
-                        }, 500);
-                    }
-                })
-                .catch(err => {
-                    console.log('Camera note:', err);
-                    if (fallbackBox) fallbackBox.classList.remove('hidden');
-                });
+            startUniversalQRScanner('vendor-camera-feed', handleQRScanSuccess);
         }
 
         function handleQRScanSuccess(rawScan) {
@@ -1321,7 +2041,14 @@
             );
 
             if (!matchedOrder) {
-                matchedOrder = state.orders.find(o => o.status === 'ready' || o.status === 'printing');
+                const pinMatch = clean.match(/\b\d{4}\b/);
+                if (pinMatch) {
+                    matchedOrder = state.orders.find(o => o.pickupCode === pinMatch[0]);
+                }
+            }
+
+            if (!matchedOrder) {
+                matchedOrder = state.orders.find(o => o.status === 'ready' || o.status === 'printing' || o.status === 'paid_escrow');
             }
 
             if (!matchedOrder) {
@@ -1329,13 +2056,7 @@
                 return;
             }
 
-            // Stop camera stream cleanly
-            if (window.activeScannerStream) {
-                try {
-                    window.activeScannerStream.getTracks().forEach(t => t.stop());
-                } catch(e) {}
-                window.activeScannerStream = null;
-            }
+            stopActiveScannerStream();
 
             // Complete the order & release escrow
             matchedOrder.status = 'completed';
@@ -1344,19 +2065,25 @@
             }
             const payout = matchedOrder.total - 0.20;
             state.vendorEarnings += payout;
+            state.walletBalance += payout;
+            document.getElementById('wallet-balance-header').textContent = `RM${state.walletBalance.toFixed(2)}`;
+
+            state.walletTransactions.unshift({
+                id: 'TXN-' + Math.floor(1000 + Math.random() * 9000),
+                type: 'payout',
+                title: `QR Verified: ${matchedOrder.fileName}`,
+                amount: payout,
+                time: 'Just now',
+                status: 'Completed',
+                method: 'Escrow Release'
+            });
 
             if (window.dbService) {
                 window.dbService.saveOrder(matchedOrder);
             }
 
-            // Confetti celebration
-            if (typeof confetti === 'function') {
-                confetti({
-                    particleCount: 70,
-                    spread: 75,
-                    origin: { y: 0.6 }
-                });
-            }
+            playAppSound('chime');
+            triggerConfetti();
 
             closeModal();
             showNotification(`QR Verified! +RM${payout.toFixed(2)} credited to your wallet. Customer file auto-deleted.`);
@@ -2079,23 +2806,39 @@
                             ${state.vendorOnline ? 'ONLINE' : 'OFFLINE'}
                         </button>
                     </div>
-                    <button onclick="openVendorQRScanner()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-lime-300 font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 shadow-sm transition active:scale-98">
-                        <i data-lucide="scan" class="w-4 h-4 text-lime-300"></i>
-                        <span>Scan Student Pick-Up QR / PIN</span>
-                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="openVendorQRScanner()" class="py-2.5 bg-slate-900 hover:bg-slate-800 text-lime-300 font-extrabold text-xs rounded-2xl flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95">
+                            <i data-lucide="scan" class="w-4 h-4 text-lime-300"></i>
+                            <span>Scan Student QR</span>
+                        </button>
+                        <button onclick="openVendorQRStand()" class="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs rounded-2xl flex items-center justify-center gap-1.5 border border-blue-200 transition active:scale-95">
+                            <i data-lucide="qr-code" class="w-4 h-4 text-blue-600"></i>
+                            <span>Desk QR Stand</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Earnings Summary -->
                 <div class="grid grid-cols-2 gap-2.5">
-                    <div class="bg-slate-900 text-white p-3.5 rounded-2xl">
-                        <span class="text-[10px] text-slate-400 uppercase font-bold">Total Earned</span>
-                        <div class="text-lg font-extrabold text-lime-300 mt-0.5">RM${state.vendorEarnings.toFixed(2)}</div>
-                        <span class="text-[10px] text-slate-400">From spare printer capacity</span>
+                    <div class="bg-slate-900 text-white p-3.5 rounded-2xl flex flex-col justify-between">
+                        <div>
+                            <span class="text-[10px] text-slate-400 uppercase font-bold">Total Earned</span>
+                            <div class="text-lg font-extrabold text-lime-300 mt-0.5">RM${state.vendorEarnings.toFixed(2)}</div>
+                            <span class="text-[10px] text-slate-400">Escrow released</span>
+                        </div>
+                        <button onclick="openWalletModal('withdraw')" class="mt-2 text-[10px] font-bold text-lime-300 flex items-center gap-1 hover:underline">
+                            <span>Cash Out</span> <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
+                        </button>
                     </div>
-                    <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80">
-                        <span class="text-[10px] text-slate-400 uppercase font-bold">Active Queue</span>
-                        <div class="text-lg font-extrabold text-blue-600 mt-0.5">${state.orders.filter(o => o.status !== 'completed').length} Jobs</div>
-                        <span class="text-[10px] text-slate-500">Escrow secured</span>
+                    <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 flex flex-col justify-between">
+                        <div>
+                            <span class="text-[10px] text-slate-400 uppercase font-bold">Active Queue</span>
+                            <div class="text-lg font-extrabold text-blue-600 mt-0.5">${state.orders.filter(o => o.status !== 'completed').length} Jobs</div>
+                            <span class="text-[10px] text-slate-500">Escrow secured</span>
+                        </div>
+                        <button onclick="openWalletModal('history')" class="mt-2 text-[10px] font-bold text-blue-600 flex items-center gap-1 hover:underline">
+                            <span>Ledger</span> <i data-lucide="file-text" class="w-3 h-3"></i>
+                        </button>
                     </div>
                 </div>
 
