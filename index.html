@@ -1132,16 +1132,36 @@
             if (!text) return;
 
             const vid = state.activeChatVendorId;
+            const vendor = state.vendors.find(v => v.id === vid) || state.vendors[0];
+
             if (!state.chats[vid]) state.chats[vid] = [];
             state.chats[vid].push({ sender: 'student', text, time: '23:44' });
             if (input) input.value = '';
             render();
 
+            // Humanized student peer responses
+            let humanizedReply = '';
+            const lower = text.toLowerCase();
+
+            if (lower.includes('staple')) {
+                humanizedReply = `No problem bro, gotchu! I'll corner-staple it and slip it into a clean clear folder for you 👍. Printing the last few pages now!`;
+            } else if (lower.includes('on my way') || lower.includes('down') || lower.includes('coming')) {
+                humanizedReply = `All good! Take your time bro, I'm already waiting at the ${vendor.code || 'hostel'} lobby table near the stairs. See you in a bit!`;
+            } else if (lower.includes('meet') || lower.includes('where') || lower.includes('lobby')) {
+                humanizedReply = `Yup, meet me at the ground floor lobby study table! Just bring your 4-digit PIN (#8842) or phone to verify.`;
+            } else if (lower.includes('color') || lower.includes('colour') || lower.includes('black')) {
+                humanizedReply = `Checked your specs! Colors are coming out super vibrant on the EcoTank. Looking really sharp!`;
+            } else if (lower.includes('urgent') || lower.includes('deadline') || lower.includes('fast') || lower.includes('quick')) {
+                humanizedReply = `Don't worry bro, I know the deadline panic haha! High-speed duplex printing is running now, done in 2 mins.`;
+            } else {
+                humanizedReply = `Got it bro! Printing right now—pages are looking crisp. I'll ping you the second it's ready on the table!`;
+            }
+
             setTimeout(() => {
                 state.chats[vid].push({
                     sender: 'vendor',
-                    text: 'Got it! Printing right now—will ping you when it is ready for pick-up.',
-                    time: '23:44'
+                    text: humanizedReply,
+                    time: '23:45'
                 });
                 if (state.studentTab === 'chat') render();
             }, 800);
